@@ -24,33 +24,33 @@ public sealed class WildcardEventMatcher : IEventMatcher
 
     public bool IsMatch(string publishedTopic, string subscribedTopic)
     {
-        // 快速路径：精确匹配
-        if (string.Equals(publishedTopic, subscribedTopic,
-            _ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        var comparison = _ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        // 发布方未使用通配符时，按字面量比较
+        if (!HasWildcard(publishedTopic))
         {
-            return true;
+            return string.Equals(publishedTopic, subscribedTopic, comparison);
         }
 
-        // 检查是否包含通配符
-        if (!subscribedTopic.Contains('*') && !subscribedTopic.Contains('?'))
-        {
-            return false;
-        }
-
-        // 转换为正则表达式并缓存
-        var regex = _regexCache.GetOrAdd(subscribedTopic, pattern =>
-        {
-            var regexPattern = "^" + Regex.Escape(pattern)
-                .Replace("\\*", ".*")
-                .Replace("\\?", ".") + "$";
-
-            var options = RegexOptions.Compiled;
-            if (_ignoreCase)
-                options |= RegexOptions.IgnoreCase;
-
-            return new Regex(regexPattern, options, TimeSpan.FromSeconds(1));
-        });
-
-        return regex.IsMatch(publishedTopic);
+        // 仅允许发布方模式去匹配订阅 Topic
+        var regex = _regexCache.GetOrAdd(publishedTopic, CreateRegexFromWildcard);
+        return regex.IsMatch(subscribedTopic);
     }
+
+    private Regex CreateRegexFromWildcard(string pattern)
+    {
+        var regexPattern = "^" + Regex.Escape(pattern)
+            .Replace("\\*", ".*")
+            .Replace("\\?", ".") + "$";
+
+        var options = RegexOptions.Compiled;
+        if (_ignoreCase)
+        {
+            options |= RegexOptions.IgnoreCase;
+        }
+
+        return new Regex(regexPattern, options, TimeSpan.FromSeconds(1));
+    }
+
+    private static bool HasWildcard(string text) => text.Contains('*') || text.Contains('?');
 }

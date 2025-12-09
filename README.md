@@ -415,15 +415,28 @@ public void HandleOrderCreated(OrderCreatedEvent e) { }
 services.AddLocalEventBus()
     .AddWildcardMatcher();
 
-// 订阅示例
-[Subscribe(Topic = "orders/*")]        // 匹配 orders/created, orders/updated 等
-public void HandleOrderEvents(object e) { }
+// 订阅示例（订阅方使用字面量 Topic）
+[Subscribe(Topic = "orders/created")]
+public void HandleOrderCreated(object e) { }
 
-[Subscribe(Topic = "*/created")]       // 匹配 orders/created, users/created 等
-public void HandleAllCreatedEvents(object e) { }
+[Subscribe(Topic = "orders/updated")]
+public void HandleOrderUpdated(object e) { }
 
-[Subscribe(Topic = "**")]              // 匹配所有事件
-public void HandleAllEvents(object e) { }
+[Subscribe(Topic = "users/created")]
+public void HandleUserCreated(object e) { }
+
+// 发布侧使用通配符匹配多个订阅者
+await eventBus.PublishAsync("orders/*");  // 命中 orders/created、orders/updated
+await eventBus.PublishAsync("*/created"); // 命中 orders/created、users/created
+await eventBus.PublishAsync("**");        // 命中所有订阅
+```
+
+> 仅发布方 Topic 支持通配符匹配订阅方：发布时可使用 `*` / `?` 将同一消息广播到符合模式的订阅者；订阅方 Topic 默认按字面量匹配（若需更灵活可使用正则匹配器）。
+
+```csharp
+// 发布侧使用通配符广播
+await eventBus.PublishAsync("orders/*");     // 触发 orders/created、orders/updated 等订阅
+await eventBus.PublishAsync("user-?/login"); // 触发 user-a/login、user-b/login 等订阅
 ```
 
 #### 正则表达式匹配
@@ -433,12 +446,16 @@ public void HandleAllEvents(object e) { }
 services.AddLocalEventBus()
     .AddRegexMatcher();
 
-// 订阅示例
-[Subscribe(Topic = @"^orders/(created|updated)$")]
-public void HandleOrderChanges(object e) { }
+// 订阅示例（订阅方使用字面量 Topic）
+[Subscribe(Topic = "orders/created")]
+public void HandleOrderCreated(object e) { }
 
-[Subscribe(Topic = @"^user-\d+/login$")]
-public void HandleUserLogin(object e) { }
+[Subscribe(Topic = "orders/updated")]
+public void HandleOrderUpdated(object e) { }
+
+// 发布侧使用正则模式匹配多个订阅
+await eventBus.PublishAsync(@"^orders/(created|updated)$");
+await eventBus.PublishAsync(@"^user-\d+/login$");
 ```
 
 #### 自定义匹配器
@@ -715,40 +732,6 @@ public class EventBusBenchmark
 └─────────────────────────────────┘
 ```
 
-## 📁 项目结构
-
-```
-src/LocalEventBus/
-├── Abstractions/           # 抽象接口
-│   ├── IEventPublisher.cs
-│   ├── IEventSubscriber.cs
-│   ├── IEventBus.cs
-│   ├── IEventHandler.cs
-│   ├── IEventFilter.cs
-│   ├── IEventInterceptor.cs
-│   ├── IEventMatcher.cs
-│   ├── IEventMatcherProvider.cs
-│   ├── IEventTypeKeyProvider.cs
-│   ├── EventBusOptions.cs
-│   └── RetryOptions.cs
-├── DependencyInjection/    # 依赖注入
-│   └── ServiceCollectionExtensions.cs
-├── Internal/               # 内部实现
-│   ├── DefaultEventBus.cs
-│   ├── DefaultEventMatcherProvider.cs
-│   ├── DefaultEventTypeKeyProvider.cs
-│   ├── EventSubscriberRegistry.cs
-│   ├── SubscriberInfo.cs
-│   ├── EventChannelManager.cs
-│   ├── EventEnvelope.cs
-│   └── SubscriptionToken.cs
-├── Matchers/               # 事件匹配器
-│   ├── WildcardEventMatcher.cs
-│   └── RegexEventMatcher.cs
-├── EventBusFactory.cs      # 工厂类
-├── EventBusExtensions.cs   # 扩展方法
-└── SubscribeAttribute.cs   # 订阅特性
-```
 
 ## 🔧 要求
 
@@ -756,23 +739,6 @@ src/LocalEventBus/
 - Microsoft.Extensions.DependencyInjection.Abstractions 8.0+
 - System.Collections.Immutable 8.0+
 - System.Threading.Channels 8.0+
-
-## 🆕 版本历史
-
-### v2.0.0 (2024-12-08)
-- ✨ **重大更新**: 接口隔离原则，拆分为 `IEventPublisher`、`IEventSubscriber`、`IEventBus`
-- 🚀 **性能优化**: 使用 Expression 树编译委托替代反射调用，性能提升 15 倍
-- 🔒 **无锁并发**: 使用 `ConcurrentDictionary` + `ImmutableArray` 替代锁+字典拷贝
-- 📦 **强类型支持**: 支持泛型事件发布和订阅
-- 🔄 **重试策略**: 支持固定延迟、线性增长、指数退避
-- 🔀 **哈希分片**: 固定数量的分片通道，保证顺序性的同时提升并发性能
-- 🔌 **事件拦截器**: 支持前置、后置、失败拦截
-- 🎯 **事件过滤器**: 支持按条件过滤事件
-- 📍 **直接调用**: 支持 `InvokeAsync` 直接调用订阅者
-- 🎨 **Topic 路由**: 支持基于 Topic 的灵活事件路由
-- 🔧 **依赖注入**: 原生支持 Microsoft.Extensions.DependencyInjection
-
-详见 [CHANGELOG.md](CHANGELOG.md)
 
 ## ❓ FAQ
 

@@ -24,23 +24,24 @@ public sealed class RegexEventMatcher : IEventMatcher
 
     public bool IsMatch(string publishedTopic, string subscribedTopic)
     {
-        // 快速路径：精确匹配
-        if (publishedTopic == subscribedTopic)
+        // 快速路径：发布方未使用正则模式时，仅做字面量比较
+        if (!HasRegexMeta(publishedTopic))
         {
-            return true;
+            return string.Equals(publishedTopic, subscribedTopic, StringComparison.Ordinal);
         }
 
         try
         {
-            var regex = _regexCache.GetOrAdd(subscribedTopic, pattern =>
+            // 仅允许发布方模式去匹配订阅 Topic
+            var regex = _regexCache.GetOrAdd(publishedTopic, pattern =>
                 new Regex(pattern, _options, TimeSpan.FromSeconds(1)));
 
-            return regex.IsMatch(publishedTopic);
+            return regex.IsMatch(subscribedTopic);
         }
         catch (ArgumentException)
         {
-            // 无效的正则表达式，降级为精确匹配
-            return publishedTopic == subscribedTopic;
+            // 无效的正则表达式，降级为字面量比较
+            return string.Equals(publishedTopic, subscribedTopic, StringComparison.Ordinal);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -48,4 +49,8 @@ public sealed class RegexEventMatcher : IEventMatcher
             return false;
         }
     }
+
+    // 粗略判断是否包含常见的正则元字符，用于区分纯文本与模式
+    private static bool HasRegexMeta(string text) =>
+        text.IndexOfAny(new[] { '.', '*', '?', '+', '|', '\\', '^', '$', '[', ']', '(', ')', '{', '}' }) >= 0;
 }
