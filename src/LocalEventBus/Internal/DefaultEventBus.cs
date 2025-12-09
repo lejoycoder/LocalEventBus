@@ -1,0 +1,787 @@
+using System.Diagnostics;
+using System.Reflection;
+using System.Threading.Channels;
+using LocalEventBus.Abstractions;
+
+namespace LocalEventBus.Internal;
+
+/// <summary>
+/// 默认事件总线实现
+/// 支持基于 Topic 的事件路由系统
+/// </summary>
+public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
+{
+    private readonly EventSubscriberRegistry _subscriberRegistry;
+    private readonly EventChannelManager _channelManager;
+    private readonly EventBusOptions _options;
+    private readonly IEventTypeKeyProvider _keyProvider;
+    private readonly List<IEventFilter> _filters = [];
+    private readonly List<IEventInterceptor> _interceptors = [];
+    private readonly CancellationTokenSource _cts = new();
+    private Task[]? _dispatchTasks;
+    private int _disposed;
+
+    /// <summary>
+    /// 创建默认事件总线实例
+    /// </summary>
+    /// <param name="options">配置选项</param>
+    /// <param name="keyProvider">类型键提取器</param>
+    /// <param name="matcherProvider">匹配器提供者</param>
+    /// <param name="filters">过滤器集合</param>
+    /// <param name="interceptors">拦截器集合</param>
+    public DefaultEventBus(
+        EventBusOptions options,
+        IEventTypeKeyProvider keyProvider,
+        IEventMatcherProvider matcherProvider,
+        IEnumerable<IEventFilter>? filters = null,
+        IEnumerable<IEventInterceptor>? interceptors = null)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _keyProvider = keyProvider ?? throw new ArgumentNullException(nameof(keyProvider));
+
+        // 使用注入的匹配器提供者创建订阅者注册表
+        _subscriberRegistry = new EventSubscriberRegistry(matcherProvider);
+        _channelManager = new EventChannelManager(_options);
+
+        // 添加过滤器和拦截器
+        if (filters != null)
+        {
+            _filters.AddRange(filters);
+        }
+        if (interceptors != null)
+        {
+            _interceptors.AddRange(interceptors);
+        }
+    }
+
+    /// <summary>
+    /// 创建默认事件总线实例
+    /// </summary>
+    public DefaultEventBus(EventBusOptions? options = null)
+        : this(options ?? new EventBusOptions(),
+            new DefaultEventTypeKeyProvider(),
+            new DefaultEventMatcherProvider(),
+            null,
+            null)
+    {
+    }
+
+    /// <summary>
+    /// 启动事件分发循环
+    /// </summary>
+    private void EnsureDispatchLoopStarted()
+    {
+        if (_dispatchTasks is null)
+        {
+            lock (this)
+            {
+                if (_dispatchTasks is null)
+                {
+                    // 为每个分片创建独立的处理任务
+                    var shardedChannels = _channelManager.GetShardedChannels();
+                    _dispatchTasks = new Task[shardedChannels.Count];
+
+                    for (int i = 0; i < shardedChannels.Count; i++)
+                    {
+                        var shardIndex = i;
+                        _dispatchTasks[i] = Task.Run(() => DispatchShardAsync(shardedChannels[shardIndex]), _cts.Token);
+                    }
+                }
+            }
+        }
+    }
+
+    #region IEventPublisher Implementation
+
+    public async ValueTask PublishAsync<TEvent>(
+        TEvent @event,
+        PublishOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+        EnsureDispatchLoopStarted();
+
+        var envelope = CreateEventEnvelope(@event, options);
+
+        // 获取对应的 Channel（按分区键）
+        var channel = _channelManager.GetChannel(options?.PartitionKey);
+
+        // 写入 Channel
+        await channel.Writer.WriteAsync(envelope, cancellationToken);
+    }
+
+    public bool Publish<TEvent>(TEvent @event, PublishOptions? options = null)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+        EnsureDispatchLoopStarted();
+
+        var envelope = CreateEventEnvelope(@event, options);
+
+        var channelSync = _channelManager.GetChannel(options?.PartitionKey);
+        return channelSync.Writer.TryWrite(envelope);
+    }
+
+    public async ValueTask PublishBatchAsync<TEvent>(
+        IEnumerable<TEvent> events,
+        PublishOptions? options = null,
+        CancellationToken cancellationToken = default)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        EnsureDispatchLoopStarted();
+
+        var channel = _channelManager.GetChannel(options?.PartitionKey);
+
+        foreach (var @event in events)
+        {
+            var envelope = CreateEventEnvelope(@event, options);
+            await channel.Writer.WriteAsync(envelope, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// 发布纯 Topic 事件
+    /// </summary>
+    public async ValueTask PublishAsync(
+        string topic,
+        object? eventData = null,
+        PublishOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(topic);
+        EnsureDispatchLoopStarted();
+
+        var envelope = CreateTopicEventEnvelope(topic, eventData, options);
+
+        // 获取对应的 Channel（按分区键）
+        var channel = _channelManager.GetChannel(options?.PartitionKey);
+
+        // 写入 Channel
+        await channel.Writer.WriteAsync(envelope, cancellationToken);
+    }
+
+    /// <summary>
+    /// 同步发布纯 Topic 事件（无强类型）
+    /// </summary>
+    public bool Publish(
+        string topic,
+        object? eventData = null,
+        PublishOptions? options = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(topic);
+        EnsureDispatchLoopStarted();
+
+        var envelope = CreateTopicEventEnvelope(topic, eventData, options);
+
+        var channelSync = _channelManager.GetChannel(options?.PartitionKey);
+        return channelSync.Writer.TryWrite(envelope);
+    }
+
+    #endregion
+
+    #region IEventSubscriber Implementation
+
+    public IDisposable Subscribe<TEvent>(
+        Func<TEvent, CancellationToken, ValueTask> handler,
+        SubscribeOptions? options = null)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        var subscriberInfo = CreateSubscriberInfoFromDelegate(handler, options);
+        _subscriberRegistry.AddSubscriber(subscriberInfo);
+
+        return new SubscriptionToken(() => _subscriberRegistry.RemoveSubscriber(subscriberInfo));
+    }
+
+    public IDisposable Subscribe<TEvent>(
+        Action<TEvent> handler,
+        SubscribeOptions? options = null)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+
+        // 包装为异步委托
+        Func<TEvent, CancellationToken, ValueTask> asyncHandler = (e, _) =>
+        {
+            handler(e);
+            return ValueTask.CompletedTask;
+        };
+
+        return Subscribe(asyncHandler, options);
+    }
+
+    public IDisposable Subscribe(object subscriber)
+    {
+        ArgumentNullException.ThrowIfNull(subscriber);
+
+        var subscriberInfos = ScanSubscriberMethods(subscriber);
+
+        foreach (var info in subscriberInfos)
+        {
+            _subscriberRegistry.AddSubscriber(info);
+        }
+
+        return new SubscriptionToken(() =>
+        {
+            foreach (var info in subscriberInfos)
+            {
+                _subscriberRegistry.RemoveSubscriber(info);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 订阅纯 Topic
+    /// </summary>
+    public IDisposable Subscribe(
+        string topic,
+        Func<object?, CancellationToken, ValueTask> handler,
+        SubscribeOptions? options = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(topic);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        var subscriberInfo = CreateTopicSubscriberInfo(topic, handler, options);
+        _subscriberRegistry.AddSubscriber(subscriberInfo);
+
+        return new SubscriptionToken(() => _subscriberRegistry.RemoveSubscriber(subscriberInfo));
+    }
+
+    /// <summary>
+    /// 订阅纯 Topic
+    /// </summary>
+    public IDisposable Subscribe(
+        string topic,
+        Action<object?> handler,
+        SubscribeOptions? options = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(topic);
+        ArgumentNullException.ThrowIfNull(handler);
+
+        // 包装为异步委托
+        Func<object?, CancellationToken, ValueTask> asyncHandler = (e, _) =>
+        {
+            handler(e);
+            return ValueTask.CompletedTask;
+        };
+
+        return Subscribe(topic, asyncHandler, options);
+    }
+
+
+    /// <inheritdoc/>
+    public void Unsubscribe(object subscriber)
+    {
+        ArgumentNullException.ThrowIfNull(subscriber);
+        _subscriberRegistry.RemoveSubscribersByTarget(subscriber);
+    }
+
+    #endregion
+
+    #region Direct Invocation
+
+    /// <summary>
+    /// 直接调用订阅者（不经过事件队列）
+    /// </summary>
+    public async ValueTask InvokeAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
+        where TEvent : notnull
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        // 获取 Topic
+        var topic = _keyProvider.GetKey(typeof(TEvent));
+        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(topic);
+
+        if (subscribers.IsEmpty)
+        {
+            return;
+        }
+
+        // 按优先级分组执行
+        var subscriberGroups = subscribers
+            .GroupBy(s => s.Priority)
+            .OrderByDescending(g => g.Key);
+
+        foreach (var group in subscriberGroups)
+        {
+            var tasks = group.Select(subscriber =>
+                InvokeSubscriberDirectlyAsync(@event, subscriber, cancellationToken));
+
+            if (group.All(s => s.AllowConcurrency))
+            {
+                await Task.WhenAll(tasks);
+            }
+            else
+            {
+                foreach (var task in tasks)
+                {
+                    await task;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 通过 Topic 直接调用订阅者
+    /// </summary>
+    public async ValueTask InvokeByTopicAsync(string topic, object? eventData = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(topic);
+
+        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(topic);
+
+        if (subscribers.IsEmpty)
+        {
+            return;
+        }
+
+        // 按优先级分组执行
+        var subscriberGroups = subscribers
+            .GroupBy(s => s.Priority)
+            .OrderByDescending(g => g.Key);
+
+        foreach (var group in subscriberGroups)
+        {
+            var tasks = group.Select(subscriber =>
+                InvokeSubscriberDirectlyAsync(eventData, subscriber, cancellationToken));
+
+            if (group.All(s => s.AllowConcurrency))
+            {
+                await Task.WhenAll(tasks);
+            }
+            else
+            {
+                foreach (var task in tasks)
+                {
+                    await task;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 直接调用单个订阅者（不触发拦截器，仅应用过滤器和超时）
+    /// </summary>
+    private async Task InvokeSubscriberDirectlyAsync(
+        object? eventData,
+        SubscriberInfo subscriber,
+        CancellationToken cancellationToken)
+    {
+        // 1. 过滤器检查（仅当有事件数据时）
+        if (eventData != null)
+        {
+            foreach (var filter in _filters.OrderBy(f => f.Order))
+            {
+                if (!await filter.ShouldProcessAsync(eventData, cancellationToken))
+                {
+                    return;
+                }
+            }
+        }
+
+        // 2. 应用超时并执行订阅者（直接调用不触发拦截器）
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var timeout = subscriber.Timeout ?? _options.DefaultTimeout;
+        cts.CancelAfter(timeout);
+
+        await subscriber.InvokeAsync(eventData, cts.Token);
+    }
+
+    #endregion
+
+    #region IEventBusDiagnostics Implementation
+
+    public int GetSubscriberCount() => _subscriberRegistry.Count;
+
+    public int GetPendingEventCount() => _channelManager.GetPendingCount();
+
+    public IReadOnlyList<SubscriberInfo> GetSubscribers() => _subscriberRegistry.GetAllSubscribers();
+
+    public IReadOnlyList<SubscriberInfo> GetSubscribers<TEvent>() where TEvent : notnull
+    {
+        var topic = _keyProvider.GetKey(typeof(TEvent));
+        return _subscriberRegistry.GetSubscribersByPublishedTopic(topic).ToArray();
+    }
+
+    #endregion
+
+    #region Event Dispatch Loop
+
+    /// <summary>
+    /// 分片事件分发循环（每个分片独立处理，保证顺序性）
+    /// </summary>
+    private async Task DispatchShardAsync(Channel<EventEnvelope> channel)
+    {
+        try
+        {
+            await foreach (var envelope in channel.Reader.ReadAllAsync(_cts.Token))
+            {
+                try
+                {
+                    await DispatchEventAsync(envelope);
+                }
+                catch (Exception)
+                {
+                    // 记录但不中断循环
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常取消
+        }
+    }
+
+    /// <summary>
+    /// 分发单个事件
+    /// </summary>
+    private async Task DispatchEventAsync(EventEnvelope envelope)
+    {
+        // 通过 Topic 获取订阅者（支持模式匹配）
+        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(envelope.Topic!);
+
+        if (subscribers.IsEmpty)
+        {
+            return;
+        }
+
+        // 按优先级分组
+        var subscriberGroups = subscribers
+            .GroupBy(s => s.Priority)
+            .OrderByDescending(g => g.Key);
+
+        foreach (var group in subscriberGroups)
+        {
+            var tasks = group.Select(subscriber =>
+                ExecuteSubscriberAsync(envelope, subscriber, _cts.Token));
+
+            // 根据配置决定是否并发执行
+            if (envelope.AllowConcurrency && group.All(s => s.AllowConcurrency))
+            {
+                await Task.WhenAll(tasks);
+            }
+            else
+            {
+                foreach (var task in tasks)
+                {
+                    await task;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 执行单个订阅者（带重试和拦截）
+    /// </summary>
+    private async Task ExecuteSubscriberAsync(
+        EventEnvelope envelope,
+        SubscriberInfo subscriber,
+        CancellationToken cancellationToken)
+    {
+        // 1. 过滤器检查
+        foreach (var filter in _filters.OrderBy(f => f.Order))
+        {
+            if (!await filter.ShouldProcessAsync(envelope.EventData, cancellationToken))
+            {
+                return;
+            }
+        }
+
+        // 2. 前置拦截
+        foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+        {
+            await interceptor.OnHandlingAsync(envelope.EventData, subscriber, cancellationToken);
+        }
+
+        var sw = Stopwatch.StartNew();
+        Exception? lastException = null;
+        int attemptNumber = 0;
+        var retryOptions = _options.RetryOptions;
+
+        // 3. 执行订阅者（带重试）
+        while (attemptNumber <= retryOptions.MaxRetryAttempts)
+        {
+            attemptNumber++;
+
+            try
+            {
+                // 应用超时
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var timeout = subscriber.Timeout ?? _options.DefaultTimeout;
+                cts.CancelAfter(timeout);
+
+                await subscriber.InvokeAsync(envelope.EventData, cts.Token);
+
+                // 成功处理
+                sw.Stop();
+
+                // 后置拦截
+                foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+                {
+                    await interceptor.OnHandledAsync(envelope.EventData, subscriber, sw.Elapsed, cancellationToken);
+                }
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+
+                // 检查是否应该重试
+                if (attemptNumber > retryOptions.MaxRetryAttempts ||
+                    (retryOptions.ShouldRetry != null && !retryOptions.ShouldRetry(ex)))
+                {
+                    break;
+                }
+
+                // 计算重试延迟
+                var delay = CalculateRetryDelay(attemptNumber, retryOptions);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+
+        // 4. 所有重试失败
+        sw.Stop();
+
+        // 失败拦截
+        if (lastException != null)
+        {
+            foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+            {
+                await interceptor.OnHandlerFailedAsync(envelope.EventData, subscriber, lastException, cancellationToken);
+            }
+        }
+    }
+
+    private TimeSpan CalculateRetryDelay(int attemptNumber, RetryOptions options)
+    {
+        var delay = options.DelayStrategy switch
+        {
+            RetryDelayStrategy.Fixed => options.InitialDelay,
+            RetryDelayStrategy.Linear => TimeSpan.FromMilliseconds(options.InitialDelay.TotalMilliseconds * attemptNumber),
+            RetryDelayStrategy.ExponentialBackoff => TimeSpan.FromMilliseconds(options.InitialDelay.TotalMilliseconds * Math.Pow(2, attemptNumber - 1)),
+            _ => options.InitialDelay
+        };
+
+        return delay > options.MaxDelay ? options.MaxDelay : delay;
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private EventEnvelope CreateEventEnvelope<TEvent>(TEvent @event, PublishOptions? options)
+        where TEvent : notnull
+    {
+        // 确定发布的 Topic
+        var topic = options?.Topic;
+        if (string.IsNullOrEmpty(topic))
+        {
+            // 如果未指定 Topic，使用事件类型全名
+            topic = _keyProvider.GetKey(typeof(TEvent));
+        }
+
+        return new EventEnvelope
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            EventData = @event,
+            EventType = typeof(TEvent),
+            Timestamp = DateTimeOffset.UtcNow,
+            PartitionKey = options?.PartitionKey,
+            Priority = options?.Priority ?? 5,
+            CorrelationId = options?.CorrelationId,
+            Topic = topic,
+            AllowConcurrency = options?.AllowConcurrency ?? false
+        };
+    }
+
+    private EventEnvelope CreateTopicEventEnvelope(string topic, object? eventData, PublishOptions? options)
+    {
+        return new EventEnvelope
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            EventData = eventData ?? new object(),
+            EventType = eventData?.GetType() ?? typeof(object),
+            Timestamp = DateTimeOffset.UtcNow,
+            PartitionKey = options?.PartitionKey,
+            Priority = options?.Priority ?? 5,
+            CorrelationId = options?.CorrelationId,
+            Topic = topic,
+            AllowConcurrency = options?.AllowConcurrency ?? false
+        };
+    }
+
+    private SubscriberInfo CreateSubscriberInfoFromDelegate<TEvent>(
+        Func<TEvent, CancellationToken, ValueTask> handler,
+        SubscribeOptions? options)
+        where TEvent : notnull
+    {
+        var method = handler.Method;
+        var target = handler.Target ?? handler;
+
+        // 确定 Topic
+        var topic = options?.Topic;
+        if (string.IsNullOrEmpty(topic))
+        {
+            // 如果未指定 Topic，使用事件类型全名
+            topic = _keyProvider.GetKey(typeof(TEvent));
+        }
+
+        return new SubscriberInfo(
+            eventType: typeof(TEvent),
+            target: target,
+            method: method,
+            priority: options?.Priority ?? 5,
+            allowConcurrency: options?.AllowConcurrency ?? true,
+            timeout: options?.Timeout,
+            topic: topic,
+            isParameterless: false);
+    }
+
+    private SubscriberInfo CreateTopicSubscriberInfo(
+        string topic,
+        Func<object?, CancellationToken, ValueTask> handler,
+        SubscribeOptions? options)
+    {
+        var method = handler.Method;
+        var target = handler.Target ?? handler;
+
+        return new SubscriberInfo(
+            eventType: typeof(object),
+            target: target,
+            method: method,
+            priority: options?.Priority ?? 5,
+            allowConcurrency: options?.AllowConcurrency ?? true,
+            timeout: options?.Timeout,
+            topic: topic,
+            isParameterless: true);
+    }
+
+    private List<SubscriberInfo> ScanSubscriberMethods(object subscriber)
+    {
+        var result = new List<SubscriberInfo>();
+        var type = subscriber.GetType();
+
+        // 获取所有带 SubscribeAttribute 的方法（包括基类）
+        var methods = new List<MethodInfo>();
+        var currentType = type;
+
+        while (currentType != null && currentType != typeof(object))
+        {
+            var typeMethods = currentType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(m => m.DeclaringType == currentType && m.GetCustomAttributes<SubscribeAttribute>().Any());
+
+            methods.AddRange(typeMethods);
+            currentType = currentType.BaseType;
+        }
+
+        foreach (var method in methods)
+        {
+            // 获取所有 Subscribe 特性（支持多个）
+            var attributes = method.GetCustomAttributes<SubscribeAttribute>().ToList();
+            var parameters = method.GetParameters();
+
+            // 验证方法签名：允许 0-2 个参数
+            if (parameters.Length > 2)
+            {
+                throw new InvalidOperationException(
+                    $"方法 {type.Name}.{method.Name} 最多有 2 个参数（事件参数和可选的 CancellationToken）");
+            }
+
+            // 验证返回类型
+            if (method.ReturnType != typeof(void) &&
+                method.ReturnType != typeof(Task) &&
+                method.ReturnType != typeof(ValueTask))
+            {
+                throw new InvalidOperationException(
+                    $"方法 {type.Name}.{method.Name} 返回类型必须是 void、Task 或 ValueTask");
+            }
+
+            // 判断是否为无参方法（不含事件参数）
+            var nonCancellationParams = parameters.Where(p => p.ParameterType != typeof(CancellationToken)).ToList();
+            var isParameterless = nonCancellationParams.Count == 0;
+
+            // 无参方法使用 object 作为事件类型占位
+            var eventType = isParameterless
+                ? typeof(object)
+                : nonCancellationParams.First().ParameterType;
+
+            // 为每个特性创建一个 SubscriberInfo
+            foreach (var attribute in attributes)
+            {
+                // 确定 Topic
+                var topic = attribute.Topic;
+                if (string.IsNullOrEmpty(topic))
+                {
+                    if (isParameterless)
+                    {
+                        throw new InvalidOperationException(
+                            $"无参方法 {type.Name}.{method.Name} 必须指定 Topic");
+                    }
+                    // 如果未指定 Topic，使用事件类型全名
+                    topic = _keyProvider.GetKey(eventType);
+                }
+
+                var info = new SubscriberInfo(
+                    eventType: eventType,
+                    target: subscriber,
+                    method: method,
+                    priority: attribute.Priority,
+                    allowConcurrency: attribute.AllowConcurrency,
+                    timeout: attribute.Timeout > 0 ? TimeSpan.FromMilliseconds(attribute.Timeout) : null,
+                    topic: topic,
+                    isParameterless: isParameterless);
+
+                result.Add(info);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 添加过滤器
+    /// </summary>
+    public void AddFilter(IEventFilter filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        _filters.Add(filter);
+    }
+
+    /// <summary>
+    /// 添加拦截器
+    /// </summary>
+    public void AddInterceptor(IEventInterceptor interceptor)
+    {
+        ArgumentNullException.ThrowIfNull(interceptor);
+        _interceptors.Add(interceptor);
+    }
+
+    #endregion
+
+    #region IDisposable
+
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 0)
+        {
+            _cts.Cancel();
+            _channelManager.Dispose();
+            _cts.Dispose();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 0)
+        {
+            _cts.Cancel();
+            await _channelManager.DisposeAsync();
+            _cts.Dispose();
+        }
+    }
+
+    #endregion
+}

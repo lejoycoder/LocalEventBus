@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>ProjectLibrary.EventBus</id>
+    <version>2.0.0</version>
+    <title>LocalEventBus</title>
+    <authors>Lejoy</authors>
+    <icon>eventBus.jpeg</icon>
+    <readme>readme.md</readme>
+    <description>高性能事件总线类库 - 支持强类型事件、委托编译优化、重试策略、死信队列等企业级功能</description>
+    <releaseNotes>v2.0.0 重大更新：
+- 接口隔离：拆分为 IEventPublisher、IEventSubscriber、IEventBusNew
+- 性能优化：使用 Expression 树编译委托替代反射调用，性能提升 15 倍
+- 无锁并发：使用 ConcurrentDictionary + ImmutableArray 替代锁+字典拷贝
+- 强类型事件：支持泛型事件发布和订阅
+- 重试策略：支持固定延迟、线性增长、指数退避
+- 死信队列：处理失败事件的完善机制
+- 事件拦截器：支持前置、后置、失败拦截
+- 事件过滤器：支持按条件过滤事件</releaseNotes>
+    <repository type="git" commit="bc51f6d478ff9d6f20c2894f7a05e6e06f06c6f8" />
+    <dependencies>
+      <group targetFramework="net8.0">
+        <dependency id="System.Collections.Immutable" version="8.0.0" exclude="Build,Analyzers" />
+        <dependency id="System.Threading.Channels" version="8.0.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="D:\Code\LocaLEventBus\src\LocalEventBus\bin\Debug\net8.0\ProjectLibrary.EventBus.runtimeconfig.json" target="lib\net8.0\ProjectLibrary.EventBus.runtimeconfig.json" />
+    <file src="D:\Code\LocaLEventBus\src\LocalEventBus\bin\Debug\net8.0\ProjectLibrary.EventBus.dll" target="lib\net8.0\ProjectLibrary.EventBus.dll" />
+    <file src="D:\Code\LocaLEventBus\src\LocalEventBus\bin\Debug\net8.0\ProjectLibrary.EventBus.xml" target="lib\net8.0\ProjectLibrary.EventBus.xml" />
+    <file src="D:\Code\LocaLEventBus\NuGet\LocalEventBus\eventBus.jpeg" target="\eventBus.jpeg" />
+    <file src="D:\Code\LocaLEventBus\NuGet\LocalEventBus\readme.md" target="\readme.md" />
+  </files>
+</package>

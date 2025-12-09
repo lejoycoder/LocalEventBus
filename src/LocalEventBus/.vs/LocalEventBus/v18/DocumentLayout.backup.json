@@ -1,0 +1,384 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}|..\\..\\tests\\LocalEventBus.Tests\\LocalEventBus.Tests.csproj|d:\\code\\localeventbus\\tests\\localeventbus.tests\\invokeasynctests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\eventbusfactory.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:eventbusfactory.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}|..\\..\\tests\\LocalEventBus.Tests\\LocalEventBus.Tests.csproj|d:\\code\\localeventbus\\tests\\localeventbus.tests\\integrationtests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\eventchannelmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\eventchannelmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\defaulteventbus.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\defaulteventbus.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\defaulteventmatcherprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\defaulteventmatcherprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\dependencyinjection\\servicecollectionextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:dependencyinjection\\servicecollectionextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\abstractions\\eventbusoptions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:abstractions\\eventbusoptions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\defaulteventtypekeyprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\defaulteventtypekeyprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\eventenvelope.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\eventenvelope.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\eventsubscriberregistry.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\eventsubscriberregistry.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\subscriberinfo.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\subscriberinfo.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\internal\\subscriptiontoken.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:internal\\subscriptiontoken.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\eventbusextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:eventbusextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\matchers\\wildcardeventmatcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:matchers\\wildcardeventmatcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\matchers\\regexeventmatcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:matchers\\regexeventmatcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\abstractions\\ieventmatcherprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:abstractions\\ieventmatcherprovider.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\abstractions\\ieventbus.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:abstractions\\ieventbus.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\abstractions\\ieventfilter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:abstractions\\ieventfilter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|d:\\code\\localeventbus\\src\\localeventbus\\abstractions\\ieventhandler.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{9E3F6AAD-BC49-3B25-9388-92356EDB5DD9}|LocalEventBus.csproj|solutionrelative:abstractions\\ieventhandler.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "InvokeAsyncTests.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\tests\\LocalEventBus.Tests\\InvokeAsyncTests.cs",
+              "RelativeDocumentMoniker": "..\\..\\tests\\LocalEventBus.Tests\\InvokeAsyncTests.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\tests\\LocalEventBus.Tests\\InvokeAsyncTests.cs",
+              "RelativeToolTip": "..\\..\\tests\\LocalEventBus.Tests\\InvokeAsyncTests.cs",
+              "ViewState": "AgIAADwAAAAAAAAAAAAywFEAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:12:14.107Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "IntegrationTests.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\tests\\LocalEventBus.Tests\\IntegrationTests.cs",
+              "RelativeDocumentMoniker": "..\\..\\tests\\LocalEventBus.Tests\\IntegrationTests.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\tests\\LocalEventBus.Tests\\IntegrationTests.cs",
+              "RelativeToolTip": "..\\..\\tests\\LocalEventBus.Tests\\IntegrationTests.cs",
+              "ViewState": "AgIAABYAAAAAAAAAAAAowCwAAAArAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:10:30.765Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:130:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:128:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:128:0:{1fc202d4-d401-403c-9834-5b218574bb67}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:129:0:{116d2292-e37d-41cd-a077-ebacac4c8cc4}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{aa2115a1-9712-457b-9047-dbb71ca2cdd2}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "ServiceCollectionExtensions.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\DependencyInjection\\ServiceCollectionExtensions.cs",
+              "RelativeDocumentMoniker": "DependencyInjection\\ServiceCollectionExtensions.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\DependencyInjection\\ServiceCollectionExtensions.cs",
+              "RelativeToolTip": "DependencyInjection\\ServiceCollectionExtensions.cs",
+              "ViewState": "AgIAAHoAAAAAAAAAAAAkwIcAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:23:42.994Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "DefaultEventBus.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventBus.cs",
+              "RelativeDocumentMoniker": "Internal\\DefaultEventBus.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventBus.cs",
+              "RelativeToolTip": "Internal\\DefaultEventBus.cs",
+              "ViewState": "AgIAAB0AAAAAAAAAAAAQwDYAAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:23:40.519Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "EventChannelManager.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventChannelManager.cs",
+              "RelativeDocumentMoniker": "Internal\\EventChannelManager.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventChannelManager.cs",
+              "RelativeToolTip": "Internal\\EventChannelManager.cs",
+              "ViewState": "AgIAAA4AAAAAAAAAAAAQwA8AAAAuAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T00:40:24.188Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "EventBusFactory.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\EventBusFactory.cs",
+              "RelativeDocumentMoniker": "EventBusFactory.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\EventBusFactory.cs",
+              "RelativeToolTip": "EventBusFactory.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwBEAAAAsAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T00:37:55.005Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "EventBusOptions.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\EventBusOptions.cs",
+              "RelativeDocumentMoniker": "Abstractions\\EventBusOptions.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\EventBusOptions.cs",
+              "RelativeToolTip": "Abstractions\\EventBusOptions.cs",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAAC0AAAA7AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:22:38.38Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "DefaultEventTypeKeyProvider.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventTypeKeyProvider.cs",
+              "RelativeDocumentMoniker": "Internal\\DefaultEventTypeKeyProvider.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventTypeKeyProvider.cs",
+              "RelativeToolTip": "Internal\\DefaultEventTypeKeyProvider.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwBAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:02:18.985Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "EventEnvelope.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventEnvelope.cs",
+              "RelativeDocumentMoniker": "Internal\\EventEnvelope.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventEnvelope.cs",
+              "RelativeToolTip": "Internal\\EventEnvelope.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:02:38.844Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "DefaultEventMatcherProvider.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventMatcherProvider.cs",
+              "RelativeDocumentMoniker": "Internal\\DefaultEventMatcherProvider.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\DefaultEventMatcherProvider.cs",
+              "RelativeToolTip": "Internal\\DefaultEventMatcherProvider.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwBAAAAALAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:30:37.343Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "EventSubscriberRegistry.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventSubscriberRegistry.cs",
+              "RelativeDocumentMoniker": "Internal\\EventSubscriberRegistry.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\EventSubscriberRegistry.cs",
+              "RelativeToolTip": "Internal\\EventSubscriberRegistry.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAoAAAArAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:29:34.612Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 11,
+              "Title": "SubscriberInfo.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\SubscriberInfo.cs",
+              "RelativeDocumentMoniker": "Internal\\SubscriberInfo.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\SubscriberInfo.cs",
+              "RelativeToolTip": "Internal\\SubscriberInfo.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:02:46.718Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 12,
+              "Title": "SubscriptionToken.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\SubscriptionToken.cs",
+              "RelativeDocumentMoniker": "Internal\\SubscriptionToken.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Internal\\SubscriptionToken.cs",
+              "RelativeToolTip": "Internal\\SubscriptionToken.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:02:51.223Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
+              "Title": "EventBusExtensions.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\EventBusExtensions.cs",
+              "RelativeDocumentMoniker": "EventBusExtensions.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\EventBusExtensions.cs",
+              "RelativeToolTip": "EventBusExtensions.cs",
+              "ViewState": "AgIAAAgAAAAAAAAAAAAzwBYAAAA4AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-09T01:02:54.276Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 14,
+              "Title": "WildcardEventMatcher.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Matchers\\WildcardEventMatcher.cs",
+              "RelativeDocumentMoniker": "Matchers\\WildcardEventMatcher.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Matchers\\WildcardEventMatcher.cs",
+              "RelativeToolTip": "Matchers\\WildcardEventMatcher.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:30:45.595Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 15,
+              "Title": "RegexEventMatcher.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Matchers\\RegexEventMatcher.cs",
+              "RelativeDocumentMoniker": "Matchers\\RegexEventMatcher.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Matchers\\RegexEventMatcher.cs",
+              "RelativeToolTip": "Matchers\\RegexEventMatcher.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:30:49.801Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 18,
+              "Title": "IEventFilter.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventFilter.cs",
+              "RelativeDocumentMoniker": "Abstractions\\IEventFilter.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventFilter.cs",
+              "RelativeToolTip": "Abstractions\\IEventFilter.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABUAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:23:27.617Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 17,
+              "Title": "IEventBus.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventBus.cs",
+              "RelativeDocumentMoniker": "Abstractions\\IEventBus.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventBus.cs",
+              "RelativeToolTip": "Abstractions\\IEventBus.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAUAAAARAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:22:59.1Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 16,
+              "Title": "IEventMatcherProvider.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventMatcherProvider.cs",
+              "RelativeDocumentMoniker": "Abstractions\\IEventMatcherProvider.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventMatcherProvider.cs",
+              "RelativeToolTip": "Abstractions\\IEventMatcherProvider.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwA8AAAAQAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:22:36.471Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 19,
+              "Title": "IEventHandler.cs",
+              "DocumentMoniker": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventHandler.cs",
+              "RelativeDocumentMoniker": "Abstractions\\IEventHandler.cs",
+              "ToolTip": "D:\\Code\\LocaLEventBus\\src\\LocalEventBus\\Abstractions\\IEventHandler.cs",
+              "RelativeToolTip": "Abstractions\\IEventHandler.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-08T14:23:35.923Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
