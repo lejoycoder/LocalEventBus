@@ -47,6 +47,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         if (filters != null)
         {
             _filters.AddRange(filters);
+            _filters.Sort((a, b) => a.Order.CompareTo(b.Order));
         }
         if (interceptors != null)
         {
@@ -373,7 +374,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         // 1. 过滤器检查（仅当有事件数据时）
         if (eventData != null)
         {
-            foreach (var filter in _filters.OrderBy(f => f.Order))
+            foreach (var filter in _filters)
             {
                 if (!await filter.ShouldProcessAsync(eventData, cancellationToken))
                 {
@@ -482,7 +483,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         CancellationToken cancellationToken)
     {
         // 1. 过滤器检查
-        foreach (var filter in _filters.OrderBy(f => f.Order))
+        foreach (var filter in _filters)
         {
             if (!await filter.ShouldProcessAsync(envelope.EventData, cancellationToken))
             {
@@ -746,6 +747,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     {
         ArgumentNullException.ThrowIfNull(filter);
         _filters.Add(filter);
+        _filters.Sort((a, b) => a.Order.CompareTo(b.Order));
     }
 
     /// <summary>

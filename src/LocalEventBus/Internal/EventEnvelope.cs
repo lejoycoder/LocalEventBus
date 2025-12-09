@@ -8,7 +8,7 @@ public sealed class EventEnvelope
     /// <summary>
     /// 事件数据
     /// </summary>
-    public required object? EventData { get; init; }
+    public required object EventData { get; init; }
 
     /// <summary>
     /// 事件类型

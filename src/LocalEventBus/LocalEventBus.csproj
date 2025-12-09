@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 		<EnableDynamicLoading>true</EnableDynamicLoading>
-		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<PackageId>LocalEventBus</PackageId>
 		<Title>LocalEventBus</Title>
 		<Version>1.0.0</Version>
@@ -19,7 +19,7 @@
 		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>local-eventbus-icon.jpeg</PackageIcon>
-		<PackageOutputPath>D:\Code\NuGet\LocalEventBus</PackageOutputPath>
+		<PackageOutputPath>..\..\docs\assets\nuget</PackageOutputPath>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
     </PropertyGroup>
 
