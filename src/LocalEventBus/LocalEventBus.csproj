@@ -6,15 +6,27 @@
         <Nullable>enable</Nullable>
 		<EnableDynamicLoading>true</EnableDynamicLoading>
 		<GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+		<PackageId>LocalEventBus</PackageId>
 		<Title>LocalEventBus</Title>
 		<Version>1.0.0</Version>
 		<Authors>Lejoy</Authors>
 		<Description>高性能事件总线类库 - 支持强类型事件、委托编译优化、重试策略、拦截器等企业级功能</Description>
-		<PackageIcon>eventBus.jpeg</PackageIcon>
-		<PackageReadmeFile>readme.md</PackageReadmeFile>
+		<PackageProjectUrl>https://www.nuget.org/packages/LocalEventBus</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/lejoyki/LocalEventBus</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>event-bus;eventbus;messaging;dotnet;channel;event</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>local-eventbus-icon.jpeg</PackageIcon>
 		<PackageOutputPath>D:\Code\NuGet\LocalEventBus</PackageOutputPath>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
     </PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\..\README.md" Pack="true" PackagePath="\" />
+		<None Include="..\..\docs\assets\nuget\local-eventbus-icon.jpeg" Pack="true" PackagePath="\" />
+	</ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />

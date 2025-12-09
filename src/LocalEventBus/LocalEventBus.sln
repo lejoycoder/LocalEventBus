@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalEventBus", "LocalEvent
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalEventBus.Tests", "..\..\tests\LocalEventBus.Tests\LocalEventBus.Tests.csproj", "{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LocalEventBus.Benchmarks", "..\..\benchmarks\LocalEventBus.Benchmarks\LocalEventBus.Benchmarks.csproj", "{1E6C1F53-1841-4C93-8F5C-4550D31F7A8F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
 		{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6D2C5D9B-715D-1B1A-E6F3-CB6F6D9E1740}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E6C1F53-1841-4C93-8F5C-4550D31F7A8F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E6C1F53-1841-4C93-8F5C-4550D31F7A8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E6C1F53-1841-4C93-8F5C-4550D31F7A8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E6C1F53-1841-4C93-8F5C-4550D31F7A8F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

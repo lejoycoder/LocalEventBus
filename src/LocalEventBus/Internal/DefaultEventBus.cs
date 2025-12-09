@@ -585,7 +585,6 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
         return new EventEnvelope
         {
-            EventId = Guid.NewGuid().ToString("N"),
             EventData = @event,
             EventType = typeof(TEvent),
             Timestamp = DateTimeOffset.UtcNow,
@@ -601,7 +600,6 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     {
         return new EventEnvelope
         {
-            EventId = Guid.NewGuid().ToString("N"),
             EventData = eventData ?? new object(),
             EventType = eventData?.GetType() ?? typeof(object),
             Timestamp = DateTimeOffset.UtcNow,
@@ -656,7 +654,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             allowConcurrency: options?.AllowConcurrency ?? true,
             timeout: options?.Timeout,
             topic: topic,
-            isParameterless: true);
+            isParameterless: false);
     }
 
     private List<SubscriberInfo> ScanSubscriberMethods(object subscriber)
