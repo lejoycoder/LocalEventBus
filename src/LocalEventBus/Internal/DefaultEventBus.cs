@@ -52,6 +52,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         if (interceptors != null)
         {
             _interceptors.AddRange(interceptors);
+            _interceptors.Sort((a, b) => a.Order.CompareTo(b.Order));
         }
     }
 
@@ -492,7 +493,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         }
 
         // 2. 前置拦截
-        foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+        foreach (var interceptor in _interceptors)
         {
             await interceptor.OnHandlingAsync(envelope.EventData, subscriber, cancellationToken);
         }
@@ -520,7 +521,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
                 sw.Stop();
 
                 // 后置拦截
-                foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+                foreach (var interceptor in _interceptors)
                 {
                     await interceptor.OnHandledAsync(envelope.EventData, subscriber, sw.Elapsed, cancellationToken);
                 }
@@ -549,7 +550,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         // 失败拦截
         if (lastException != null)
         {
-            foreach (var interceptor in _interceptors.OrderBy(i => i.Order))
+            foreach (var interceptor in _interceptors)
             {
                 await interceptor.OnHandlerFailedAsync(envelope.EventData, subscriber, lastException, cancellationToken);
             }
@@ -757,6 +758,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     {
         ArgumentNullException.ThrowIfNull(interceptor);
         _interceptors.Add(interceptor);
+        _interceptors.Sort((a, b) => a.Order.CompareTo(b.Order));
     }
 
     #endregion
