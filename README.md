@@ -44,7 +44,7 @@ var eventBus = EventBusFactory.Create(options =>
 {
     options.ChannelCapacity = 1000;
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
-    options.PartitionCount = 16;  // 配置分片数量
+    options.PartitionCount = 4;  // 配置分片数量
     options.RetryOptions.MaxRetryAttempts = 3;
     options.RetryOptions.DelayStrategy = RetryDelayStrategy.ExponentialBackoff;
 });
@@ -63,7 +63,7 @@ services.AddLocalEventBus(options =>
 {
     options.ChannelCapacity = 1000;
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
-    options.PartitionCount = 16;
+    options.PartitionCount = 4;  // 配置分片数量
     options.RetryOptions.MaxRetryAttempts = 3;
     options.RetryOptions.DelayStrategy = RetryDelayStrategy.ExponentialBackoff;
 });
