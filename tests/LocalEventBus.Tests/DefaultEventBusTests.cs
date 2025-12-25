@@ -64,9 +64,9 @@ public sealed class DefaultEventBusTests
         {
             tcs.TrySetResult(true);
             return ValueTask.CompletedTask;
-        }, new SubscribeOptions { Topic = "orders.*" });
+        }, new SubscribeOptions { Topic = "orders.created" });
 
-        await bus.PublishAsync(new TestEvent(9), new PublishOptions { Topic = "orders.created" });
+        await bus.PublishAsync(new TestEvent(9), new PublishOptions { Topic = "orders.*" });
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(AssertionTimeout));
         Assert.True(completed == tcs.Task, "通配符匹配未生效");
