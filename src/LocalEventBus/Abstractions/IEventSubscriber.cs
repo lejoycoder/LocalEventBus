@@ -99,4 +99,9 @@ public sealed class SubscribeOptions
     /// 处理超时时间
     /// </summary>
     public TimeSpan? Timeout { get; set; }
+
+    /// <summary>
+    /// 订阅者执行线程选项（默认 BackgroundThread）
+    /// </summary>
+    public ThreadOption ThreadOption { get; set; } = ThreadOption.BackgroundThread;
 }

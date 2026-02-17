@@ -27,6 +27,13 @@ public static class ServiceCollectionExtensions
         // 注册配置
         services.AddSingleton(options);
 
+        // 捕获注册时的 SynchronizationContext（用于 ThreadOption.UIThread）
+        var synchronizationContext = SynchronizationContext.Current;
+        if (synchronizationContext != null)
+        {
+            services.TryAddSingleton(synchronizationContext);
+        }
+
         services.TryAddSingleton<IEventTypeKeyProvider, DefaultEventTypeKeyProvider>();
 
         // 注册匹配器提供者

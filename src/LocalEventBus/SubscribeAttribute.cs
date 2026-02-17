@@ -1,3 +1,5 @@
+using LocalEventBus.Abstractions;
+
 namespace LocalEventBus;
 
 /// <summary>
@@ -27,6 +29,11 @@ public sealed class SubscribeAttribute : Attribute
     /// 超时时间（毫秒），0 表示使用默认值
     /// </summary>
     public double Timeout { get; set; } = 0;
+
+    /// <summary>
+    /// 订阅者执行线程选项（默认 BackgroundThread）
+    /// </summary>
+    public ThreadOption ThreadOption { get; set; } = ThreadOption.BackgroundThread;
 
     /// <summary>
     /// 创建订阅特性

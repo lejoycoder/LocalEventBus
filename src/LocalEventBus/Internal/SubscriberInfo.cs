@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using LocalEventBus.Abstractions;
 
 namespace LocalEventBus.Internal;
 
@@ -42,6 +43,11 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
     public TimeSpan? Timeout { get; }
 
     /// <summary>
+    /// 执行线程选项
+    /// </summary>
+    public ThreadOption ThreadOption { get; }
+
+    /// <summary>
     /// 主题（用于基于主题的路由）
     /// </summary>
     public string? Topic { get; }
@@ -61,6 +67,7 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
         int priority = 5,
         bool allowConcurrency = true,
         TimeSpan? timeout = null,
+        ThreadOption threadOption = ThreadOption.BackgroundThread,
         string? topic = null,
         bool isParameterless = false)
     {
@@ -70,6 +77,7 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
         Priority = priority;
         AllowConcurrency = allowConcurrency;
         Timeout = timeout;
+        ThreadOption = threadOption;
         Topic = topic;
         IsParameterless = isParameterless;
 

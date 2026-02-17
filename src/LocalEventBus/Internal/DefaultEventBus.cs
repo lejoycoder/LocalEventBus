@@ -1,7 +1,7 @@
+using LocalEventBus.Abstractions;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Channels;
-using LocalEventBus.Abstractions;
 
 namespace LocalEventBus.Internal;
 
@@ -15,6 +15,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     private readonly EventChannelManager _channelManager;
     private readonly EventBusOptions _options;
     private readonly IEventTypeKeyProvider _keyProvider;
+    private readonly SynchronizationContext? _uiSynchronizationContext;
     private readonly List<IEventFilter> _filters = [];
     private readonly List<IEventInterceptor> _interceptors = [];
     private readonly CancellationTokenSource _cts = new();
@@ -29,15 +30,18 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     /// <param name="matcherProvider">匹配器提供者</param>
     /// <param name="filters">过滤器集合</param>
     /// <param name="interceptors">拦截器集合</param>
+    /// <param name="synchronizationContext">UI/Main 线程上下文（用于 ThreadOption.UIThread）</param>
     public DefaultEventBus(
         EventBusOptions options,
         IEventTypeKeyProvider keyProvider,
         IEventMatcherProvider matcherProvider,
         IEnumerable<IEventFilter>? filters = null,
-        IEnumerable<IEventInterceptor>? interceptors = null)
+        IEnumerable<IEventInterceptor>? interceptors = null,
+        SynchronizationContext? synchronizationContext = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _keyProvider = keyProvider ?? throw new ArgumentNullException(nameof(keyProvider));
+        _uiSynchronizationContext = synchronizationContext ?? SynchronizationContext.Current;
 
         // 使用注入的匹配器提供者创建订阅者注册表
         _subscriberRegistry = new EventSubscriberRegistry(matcherProvider);
@@ -59,12 +63,15 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     /// <summary>
     /// 创建默认事件总线实例
     /// </summary>
-    public DefaultEventBus(EventBusOptions? options = null)
+    public DefaultEventBus(
+        EventBusOptions? options = null,
+        SynchronizationContext? synchronizationContext = null)
         : this(options ?? new EventBusOptions(),
             new DefaultEventTypeKeyProvider(),
             new DefaultEventMatcherProvider(),
             null,
-            null)
+            null,
+            synchronizationContext)
     {
     }
 
@@ -389,7 +396,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         var timeout = subscriber.Timeout ?? _options.DefaultTimeout;
         cts.CancelAfter(timeout);
 
-        await subscriber.InvokeAsync(eventData, cts.Token);
+        await InvokeSubscriberByThreadOptionAsync(eventData, subscriber, cts.Token);
     }
 
     #endregion
@@ -515,7 +522,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
                 var timeout = subscriber.Timeout ?? _options.DefaultTimeout;
                 cts.CancelAfter(timeout);
 
-                await subscriber.InvokeAsync(envelope.EventData, cts.Token);
+                await InvokeSubscriberByThreadOptionAsync(envelope.EventData, subscriber, cts.Token);
 
                 // 成功处理
                 sw.Stop();
@@ -629,6 +636,9 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             topic = _keyProvider.GetKey(typeof(TEvent));
         }
 
+        var threadOption = options?.ThreadOption ?? ThreadOption.BackgroundThread;
+        ValidateThreadOption(threadOption);
+
         return new SubscriberInfo(
             eventType: typeof(TEvent),
             target: target,
@@ -636,6 +646,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             priority: options?.Priority ?? 5,
             allowConcurrency: options?.AllowConcurrency ?? true,
             timeout: options?.Timeout,
+            threadOption: threadOption,
             topic: topic,
             isParameterless: false);
     }
@@ -647,6 +658,8 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     {
         var method = handler.Method;
         var target = handler.Target ?? handler;
+        var threadOption = options?.ThreadOption ?? ThreadOption.BackgroundThread;
+        ValidateThreadOption(threadOption);
 
         return new SubscriberInfo(
             eventType: typeof(object),
@@ -655,6 +668,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             priority: options?.Priority ?? 5,
             allowConcurrency: options?.AllowConcurrency ?? true,
             timeout: options?.Timeout,
+            threadOption: threadOption,
             topic: topic,
             isParameterless: false);
     }
@@ -711,6 +725,8 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             // 为每个特性创建一个 SubscriberInfo
             foreach (var attribute in attributes)
             {
+                ValidateThreadOption(attribute.ThreadOption);
+
                 // 确定 Topic
                 var topic = attribute.Topic;
                 if (string.IsNullOrEmpty(topic))
@@ -731,6 +747,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
                     priority: attribute.Priority,
                     allowConcurrency: attribute.AllowConcurrency,
                     timeout: attribute.Timeout > 0 ? TimeSpan.FromMilliseconds(attribute.Timeout) : null,
+                    threadOption: attribute.ThreadOption,
                     topic: topic,
                     isParameterless: isParameterless);
 
@@ -759,6 +776,82 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         ArgumentNullException.ThrowIfNull(interceptor);
         _interceptors.Add(interceptor);
         _interceptors.Sort((a, b) => a.Order.CompareTo(b.Order));
+    }
+
+    private void ValidateThreadOption(ThreadOption threadOption)
+    {
+        if (threadOption == ThreadOption.UIThread && _uiSynchronizationContext is null)
+        {
+            throw new InvalidOperationException(
+                "ThreadOption.UIThread 需要可用的 SynchronizationContext。请在 UI/Main 线程创建 EventBus，或通过构造函数传入 synchronizationContext。");
+        }
+    }
+
+    private ValueTask InvokeSubscriberByThreadOptionAsync(
+        object? eventData,
+        SubscriberInfo subscriber,
+        CancellationToken cancellationToken)
+    {
+        return subscriber.ThreadOption switch
+        {
+            ThreadOption.BackgroundThread => subscriber.InvokeAsync(eventData, cancellationToken),
+            ThreadOption.UIThread => new ValueTask(
+                InvokeSubscriberOnUiThreadAsync(eventData, subscriber, cancellationToken)),
+            _ => subscriber.InvokeAsync(eventData, cancellationToken)
+        };
+    }
+
+    private Task InvokeSubscriberOnUiThreadAsync(
+        object? eventData,
+        SubscriberInfo subscriber,
+        CancellationToken cancellationToken)
+    {
+        var synchronizationContext = _uiSynchronizationContext;
+        if (synchronizationContext is null)
+        {
+            throw new InvalidOperationException(
+                "ThreadOption.UIThread 需要可用的 SynchronizationContext。请在 UI/Main 线程创建 EventBus，或通过构造函数传入 synchronizationContext。");
+        }
+
+        if (ReferenceEquals(SynchronizationContext.Current, synchronizationContext))
+        {
+            return subscriber.InvokeAsync(eventData, cancellationToken).AsTask();
+        }
+
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationTokenRegistration registration = default;
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            registration = cancellationToken.Register(static state =>
+            {
+                var source = (TaskCompletionSource<object?>)state!;
+                source.TrySetCanceled();
+            }, tcs);
+        }
+
+        synchronizationContext.Post(async _ =>
+        {
+            try
+            {
+                await subscriber.InvokeAsync(eventData, cancellationToken);
+                tcs.TrySetResult(null);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                tcs.TrySetCanceled(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+            finally
+            {
+                registration.Dispose();
+            }
+        }, null);
+
+        return tcs.Task;
     }
 
     #endregion
