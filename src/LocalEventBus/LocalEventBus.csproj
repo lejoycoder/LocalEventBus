@@ -8,7 +8,7 @@
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<PackageId>LocalEventBus</PackageId>
 		<Title>LocalEventBus</Title>
-		<Version>1.0.1</Version>
+		<Version>1.0.2</Version>
 		<Authors>Lejoy</Authors>
 		<Description>高性能事件总线类库 - 支持强类型事件、委托编译优化、重试策略、拦截器等企业级功能</Description>
 		<PackageProjectUrl>https://github.com/lejoyke/LocalEventBus</PackageProjectUrl>
