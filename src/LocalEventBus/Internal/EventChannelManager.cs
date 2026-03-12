@@ -10,6 +10,7 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
 {
     private readonly Channel<EventEnvelope>[] _channels;
     private readonly long[] _channelLoads;
+    private readonly int[] _explicitChannelSubscriberCounts;
     private readonly EventBusOptions _options;
 
     /// <summary>
@@ -31,6 +32,7 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
         ChannelCount = _options.PartitionCount;
         _channels = new Channel<EventEnvelope>[ChannelCount];
         _channelLoads = new long[ChannelCount];
+        _explicitChannelSubscriberCounts = new int[ChannelCount];
 
         for (int i = 0; i < ChannelCount; i++)
         {
@@ -81,6 +83,28 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// 记录显式通道订阅者
+    /// </summary>
+    public void RegisterExplicitSubscriber(int channelId)
+    {
+        ValidateExplicitChannelId(channelId);
+        Interlocked.Increment(ref _explicitChannelSubscriberCounts[channelId]);
+    }
+
+    /// <summary>
+    /// 取消记录显式通道订阅者
+    /// </summary>
+    public void UnregisterExplicitSubscriber(int channelId)
+    {
+        ValidateExplicitChannelId(channelId);
+        var updated = Interlocked.Decrement(ref _explicitChannelSubscriberCounts[channelId]);
+        if (updated < 0)
+        {
+            Interlocked.Exchange(ref _explicitChannelSubscriberCounts[channelId], 0);
+        }
+    }
+
+    /// <summary>
     /// 入队成功后增加通道负载
     /// </summary>
     public void IncrementLoad(int channelId)
@@ -118,6 +142,16 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
         }
 
         return total > int.MaxValue ? int.MaxValue : (int)total;
+    }
+
+    /// <summary>
+    /// 获取指定通道的当前负载
+    /// </summary>
+    public long GetChannelLoad(int channelId)
+    {
+        ValidateChannelId(channelId);
+        var load = Volatile.Read(ref _channelLoads[channelId]);
+        return load < 0 ? 0 : load;
     }
 
     /// <summary>
@@ -160,6 +194,45 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
             {
                 tieCount++;
                 // 蓄水池采样：在负载并列时随机打散
+                if (Random.Shared.Next(tieCount) == 0)
+                {
+                    selected = channelId;
+                }
+            }
+        }
+
+        return selected;
+    }
+
+    /// <summary>
+    /// 在未指定通道池中选择最空闲通道
+    /// 规则：始终包含 0 号通道；1..N-1 中仅包含当前没有显式订阅者占用的通道
+    /// </summary>
+    public int SelectLeastLoadedUnspecifiedChannelId()
+    {
+        long minLoad = long.MaxValue;
+        int selected = 0;
+        int tieCount = 0;
+
+        for (int channelId = 0; channelId < ChannelCount; channelId++)
+        {
+            if (channelId > 0 && Volatile.Read(ref _explicitChannelSubscriberCounts[channelId]) > 0)
+            {
+                continue;
+            }
+
+            var load = Volatile.Read(ref _channelLoads[channelId]);
+            if (load < minLoad)
+            {
+                minLoad = load;
+                selected = channelId;
+                tieCount = 1;
+                continue;
+            }
+
+            if (load == minLoad)
+            {
+                tieCount++;
                 if (Random.Shared.Next(tieCount) == 0)
                 {
                     selected = channelId;
