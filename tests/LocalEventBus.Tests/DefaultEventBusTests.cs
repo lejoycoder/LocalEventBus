@@ -31,7 +31,7 @@ public sealed class DefaultEventBusTests
     }
 
     [Fact]
-    public async Task PublishAsync_WithTopic_Should_Invoke_Matching_Subscriber()
+    public async Task PublishByTopicAsync_Should_Invoke_Matching_Subscriber()
     {
         await using var bus = EventBusFactory.Create();
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,7 +42,7 @@ public sealed class DefaultEventBusTests
             return ValueTask.CompletedTask;
         }, new SubscribeOptions { Topic = "orders.created" });
 
-        await bus.PublishAsync("payload", "orders.created");
+        await bus.PublishByTopicAsync("orders.created", "payload");
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(AssertionTimeout));
         Assert.True(completed == tcs.Task, "Topic 订阅未触发");

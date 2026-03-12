@@ -29,22 +29,22 @@ public interface IEventPublisher
         where TEvent : notnull;
 
     /// <summary>
-    /// 发布纯 Topic 事件（无强类型）
+    /// 发布 Topic 事件（无强类型）
     /// </summary>
     /// <param name="topic">主题名称</param>
     /// <param name="eventData">事件数据（可选）</param>
     /// <param name="cancellationToken">取消令牌</param>
-    ValueTask PublishAsync(
+    ValueTask PublishByTopicAsync(
         string topic,
         object? eventData = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 同步发布纯 Topic 事件（无强类型）
+    /// 同步发布 Topic 事件（无强类型）
     /// </summary>
     /// <param name="topic">主题名称</param>
     /// <param name="eventData">事件数据（可选）</param>
-    void Publish(
+    void PublishByTopic(
         string topic,
         object? eventData = null);
 }

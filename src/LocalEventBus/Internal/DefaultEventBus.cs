@@ -139,7 +139,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     /// <summary>
     /// 发布纯 Topic 事件
     /// </summary>
-    public async ValueTask PublishAsync(
+    public async ValueTask PublishByTopicAsync(
         string topic,
         object? eventData = null,
         CancellationToken cancellationToken = default)
@@ -157,7 +157,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     /// <summary>
     /// 同步发布纯 Topic 事件（无强类型）
     /// </summary>
-    public void Publish(
+    public void PublishByTopic(
         string topic,
         object? eventData = null)
     {
@@ -311,9 +311,13 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             return;
         }
 
-        var tasks = subscribers.Select(subscriber =>
-            InvokeSubscriberDirectlyAsync(@event, subscriber, cancellationToken));
-        await Task.WhenAll(tasks);
+        if (subscribers.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"InvokeAsync 要求最多一个匹配订阅者。Topic: '{topic}'，匹配数量: {subscribers.Length}。");
+        }
+
+        await InvokeSubscriberDirectlyAsync(@event, subscribers[0], cancellationToken);
     }
 
     /// <summary>
@@ -331,9 +335,13 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             return;
         }
 
-        var tasks = subscribers.Select(subscriber =>
-            InvokeSubscriberDirectlyAsync(eventData, subscriber, cancellationToken));
-        await Task.WhenAll(tasks);
+        if (subscribers.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"InvokeByTopicAsync 要求最多一个匹配订阅者。Topic: '{topic}'，匹配数量: {subscribers.Length}。");
+        }
+
+        await InvokeSubscriberDirectlyAsync(eventData, subscribers[0], cancellationToken);
     }
 
     /// <summary>

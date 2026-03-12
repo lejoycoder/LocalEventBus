@@ -56,7 +56,7 @@ public class EventBusBenchmarks
     public Task InvokeDirect() => _bus.InvokeAsync(_event).AsTask();
 
     [Benchmark(Description = "Publish to topic (string)")]
-    public Task PublishTopicAsync() => _bus.PublishAsync("topic/sample", null).AsTask();
+    public Task PublishTopicAsync() => _bus.PublishByTopicAsync("topic/sample", null).AsTask();
 
     private sealed record TestEvent(int Id);
 }

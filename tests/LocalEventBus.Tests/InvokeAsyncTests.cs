@@ -118,21 +118,19 @@ public class InvokeAsyncTests
     }
 
     [Fact]
-    public async Task InvokeAsync_Should_Invoke_All_Handlers()
+    public async Task InvokeAsync_With_Multiple_Matching_Subscribers_Should_Throw_And_Not_Invoke_Any()
     {
         // Arrange
         using var eventBus = EventBusFactory.Create();
         var handler = new MultiHandler();
         eventBus.Subscribe(handler);
 
-        // Act
-        await eventBus.InvokeAsync(new MessageEvent("Test"));
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.InvokeAsync(new MessageEvent("Test")).AsTask());
 
-        // Assert - 不保证顺序，但应全部执行
-        Assert.Equal(3, handler.Invoked.Count);
-        Assert.Contains("First", handler.Invoked);
-        Assert.Contains("Second", handler.Invoked);
-        Assert.Contains("Third", handler.Invoked);
+        Assert.Contains("匹配数量: 3", exception.Message);
+        Assert.Empty(handler.Invoked);
     }
 
     [Fact]
@@ -243,5 +241,35 @@ public class InvokeAsyncTests
 
         // Assert
         Assert.NotNull(receivedData);
+    }
+
+    [Fact]
+    public async Task InvokeByTopicAsync_With_Multiple_Matching_Subscribers_Should_Throw_And_Not_Invoke_Any()
+    {
+        // Arrange
+        using var eventBus = EventBusFactory.Create();
+        var firstCount = 0;
+        var secondCount = 0;
+
+        eventBus.Subscribe<object>((_, _) =>
+        {
+            firstCount++;
+            return ValueTask.CompletedTask;
+        }, new SubscribeOptions { Topic = "conflict/topic" });
+
+        eventBus.Subscribe<object>((_, _) =>
+        {
+            secondCount++;
+            return ValueTask.CompletedTask;
+        }, new SubscribeOptions { Topic = "conflict/topic" });
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.InvokeByTopicAsync("conflict/topic", new { Payload = "test" }).AsTask());
+
+        Assert.Contains("conflict/topic", exception.Message);
+        Assert.Contains("匹配数量: 2", exception.Message);
+        Assert.Equal(0, firstCount);
+        Assert.Equal(0, secondCount);
     }
 }
