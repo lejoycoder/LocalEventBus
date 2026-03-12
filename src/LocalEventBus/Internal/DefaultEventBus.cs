@@ -19,6 +19,8 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     private readonly List<IEventFilter> _filters = [];
     private readonly List<IEventInterceptor> _interceptors = [];
     private readonly CancellationTokenSource _cts = new();
+    private int _dispatchStarted;
+    private readonly int[] _explicitChannelSubscriberCounts;
     private Task[]? _dispatchTasks;
     private int _disposed;
 
@@ -46,6 +48,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         // 使用注入的匹配器提供者创建订阅者注册表
         _subscriberRegistry = new EventSubscriberRegistry(matcherProvider);
         _channelManager = new EventChannelManager(_options);
+        _explicitChannelSubscriberCounts = new int[_channelManager.ChannelCount];
 
         // 添加过滤器和拦截器
         if (filters != null)
@@ -86,6 +89,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             {
                 if (_dispatchTasks is null)
                 {
+                    Interlocked.Exchange(ref _dispatchStarted, 1);
                     // 为每个分片创建独立的处理任务
                     var shardedChannels = _channelManager.GetShardedChannels();
                     _dispatchTasks = new Task[shardedChannels.Count];
@@ -104,50 +108,32 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
     public async ValueTask PublishAsync<TEvent>(
         TEvent @event,
-        PublishOptions? options = null,
+        string? topic = null,
         CancellationToken cancellationToken = default)
         where TEvent : notnull
     {
         ArgumentNullException.ThrowIfNull(@event);
         EnsureDispatchLoopStarted();
 
-        var envelope = CreateEventEnvelope(@event, options);
-
-        // 获取对应的 Channel（按分区键）
-        var channel = _channelManager.GetChannel(options?.PartitionKey);
-
-        // 写入 Channel
-        await channel.Writer.WriteAsync(envelope, cancellationToken);
+        topic = ResolvePublishedTopic(typeof(TEvent), topic);
+        await PublishToMatchedChannelsAsync(
+            eventData: @event,
+            eventType: typeof(TEvent),
+            topic: topic,
+            cancellationToken: cancellationToken);
     }
 
-    public bool Publish<TEvent>(TEvent @event, PublishOptions? options = null)
+    public void Publish<TEvent>(TEvent @event, string? topic = null)
         where TEvent : notnull
     {
         ArgumentNullException.ThrowIfNull(@event);
         EnsureDispatchLoopStarted();
 
-        var envelope = CreateEventEnvelope(@event, options);
-
-        var channelSync = _channelManager.GetChannel(options?.PartitionKey);
-        return channelSync.Writer.TryWrite(envelope);
-    }
-
-    public async ValueTask PublishBatchAsync<TEvent>(
-        IEnumerable<TEvent> events,
-        PublishOptions? options = null,
-        CancellationToken cancellationToken = default)
-        where TEvent : notnull
-    {
-        ArgumentNullException.ThrowIfNull(events);
-        EnsureDispatchLoopStarted();
-
-        var channel = _channelManager.GetChannel(options?.PartitionKey);
-
-        foreach (var @event in events)
-        {
-            var envelope = CreateEventEnvelope(@event, options);
-            await channel.Writer.WriteAsync(envelope, cancellationToken);
-        }
+        topic = ResolvePublishedTopic(typeof(TEvent), topic);
+        PublishToMatchedChannelsSync(
+            eventData: @event,
+            eventType: typeof(TEvent),
+            topic: topic);
     }
 
     /// <summary>
@@ -156,36 +142,32 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     public async ValueTask PublishAsync(
         string topic,
         object? eventData = null,
-        PublishOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(topic);
         EnsureDispatchLoopStarted();
 
-        var envelope = CreateTopicEventEnvelope(topic, eventData, options);
-
-        // 获取对应的 Channel（按分区键）
-        var channel = _channelManager.GetChannel(options?.PartitionKey);
-
-        // 写入 Channel
-        await channel.Writer.WriteAsync(envelope, cancellationToken);
+        await PublishToMatchedChannelsAsync(
+            eventData: eventData,
+            eventType: eventData?.GetType() ?? typeof(object),
+            topic: topic,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
     /// 同步发布纯 Topic 事件（无强类型）
     /// </summary>
-    public bool Publish(
+    public void Publish(
         string topic,
-        object? eventData = null,
-        PublishOptions? options = null)
+        object? eventData = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(topic);
         EnsureDispatchLoopStarted();
 
-        var envelope = CreateTopicEventEnvelope(topic, eventData, options);
-
-        var channelSync = _channelManager.GetChannel(options?.PartitionKey);
-        return channelSync.Writer.TryWrite(envelope);
+        PublishToMatchedChannelsSync(
+            eventData: eventData,
+            eventType: eventData?.GetType() ?? typeof(object),
+            topic: topic);
     }
 
     #endregion
@@ -201,8 +183,13 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
         var subscriberInfo = CreateSubscriberInfoFromDelegate(handler, options);
         _subscriberRegistry.AddSubscriber(subscriberInfo);
+        TrackExplicitChannelSubscriber(subscriberInfo);
 
-        return new SubscriptionToken(() => _subscriberRegistry.RemoveSubscriber(subscriberInfo));
+        return new SubscriptionToken(() =>
+        {
+            _subscriberRegistry.RemoveSubscriber(subscriberInfo);
+            UntrackExplicitChannelSubscriber(subscriberInfo);
+        });
     }
 
     public IDisposable Subscribe<TEvent>(
@@ -231,6 +218,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         foreach (var info in subscriberInfos)
         {
             _subscriberRegistry.AddSubscriber(info);
+            TrackExplicitChannelSubscriber(info);
         }
 
         return new SubscriptionToken(() =>
@@ -238,6 +226,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             foreach (var info in subscriberInfos)
             {
                 _subscriberRegistry.RemoveSubscriber(info);
+                UntrackExplicitChannelSubscriber(info);
             }
         });
     }
@@ -255,8 +244,13 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
         var subscriberInfo = CreateTopicSubscriberInfo(topic, handler, options);
         _subscriberRegistry.AddSubscriber(subscriberInfo);
+        TrackExplicitChannelSubscriber(subscriberInfo);
 
-        return new SubscriptionToken(() => _subscriberRegistry.RemoveSubscriber(subscriberInfo));
+        return new SubscriptionToken(() =>
+        {
+            _subscriberRegistry.RemoveSubscriber(subscriberInfo);
+            UntrackExplicitChannelSubscriber(subscriberInfo);
+        });
     }
 
     /// <summary>
@@ -285,7 +279,14 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     public void Unsubscribe(object subscriber)
     {
         ArgumentNullException.ThrowIfNull(subscriber);
+        var subscribersToRemove = _subscriberRegistry.GetSubscribersByTarget(subscriber);
+
         _subscriberRegistry.RemoveSubscribersByTarget(subscriber);
+
+        foreach (var item in subscribersToRemove)
+        {
+            UntrackExplicitChannelSubscriber(item);
+        }
     }
 
     #endregion
@@ -299,6 +300,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         where TEvent : notnull
     {
         ArgumentNullException.ThrowIfNull(@event);
+        Interlocked.Exchange(ref _dispatchStarted, 1);
 
         // 获取 Topic
         var topic = _keyProvider.GetKey(typeof(TEvent));
@@ -309,28 +311,9 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             return;
         }
 
-        // 按优先级分组执行
-        var subscriberGroups = subscribers
-            .GroupBy(s => s.Priority)
-            .OrderByDescending(g => g.Key);
-
-        foreach (var group in subscriberGroups)
-        {
-            var tasks = group.Select(subscriber =>
-                InvokeSubscriberDirectlyAsync(@event, subscriber, cancellationToken));
-
-            if (group.All(s => s.AllowConcurrency))
-            {
-                await Task.WhenAll(tasks);
-            }
-            else
-            {
-                foreach (var task in tasks)
-                {
-                    await task;
-                }
-            }
-        }
+        var tasks = subscribers.Select(subscriber =>
+            InvokeSubscriberDirectlyAsync(@event, subscriber, cancellationToken));
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>
@@ -339,6 +322,7 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     public async ValueTask InvokeByTopicAsync(string topic, object? eventData = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(topic);
+        Interlocked.Exchange(ref _dispatchStarted, 1);
 
         var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(topic);
 
@@ -347,28 +331,9 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             return;
         }
 
-        // 按优先级分组执行
-        var subscriberGroups = subscribers
-            .GroupBy(s => s.Priority)
-            .OrderByDescending(g => g.Key);
-
-        foreach (var group in subscriberGroups)
-        {
-            var tasks = group.Select(subscriber =>
-                InvokeSubscriberDirectlyAsync(eventData, subscriber, cancellationToken));
-
-            if (group.All(s => s.AllowConcurrency))
-            {
-                await Task.WhenAll(tasks);
-            }
-            else
-            {
-                foreach (var task in tasks)
-                {
-                    await task;
-                }
-            }
-        }
+        var tasks = subscribers.Select(subscriber =>
+            InvokeSubscriberDirectlyAsync(eventData, subscriber, cancellationToken));
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>
@@ -436,6 +401,10 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
                 {
                     // 记录但不中断循环
                 }
+                finally
+                {
+                    _channelManager.DecrementLoad(envelope.ChannelId);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -450,36 +419,32 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     private async Task DispatchEventAsync(EventEnvelope envelope)
     {
         // 通过 Topic 获取订阅者（支持模式匹配）
-        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(envelope.Topic!);
-
-        if (subscribers.IsEmpty)
+        var allMatchedSubscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(envelope.Topic!);
+        if (allMatchedSubscribers.IsEmpty)
         {
             return;
         }
 
-        // 按优先级分组
-        var subscriberGroups = subscribers
-            .GroupBy(s => s.Priority)
-            .OrderByDescending(g => g.Key);
-
-        foreach (var group in subscriberGroups)
+        // 路由受众过滤，避免跨通道重复分发
+        var subscribers = envelope.RouteAudience switch
         {
-            var tasks = group.Select(subscriber =>
-                ExecuteSubscriberAsync(envelope, subscriber, _cts.Token));
+            EventRouteAudience.Explicit => allMatchedSubscribers
+                .Where(s => s.ChannelId.HasValue && s.ChannelId.Value == envelope.ChannelId)
+                .ToArray(),
+            EventRouteAudience.Unspecified => allMatchedSubscribers
+                .Where(s => !s.ChannelId.HasValue)
+                .ToArray(),
+            _ => Array.Empty<SubscriberInfo>()
+        };
 
-            // 根据配置决定是否并发执行
-            if (envelope.AllowConcurrency && group.All(s => s.AllowConcurrency))
-            {
-                await Task.WhenAll(tasks);
-            }
-            else
-            {
-                foreach (var task in tasks)
-                {
-                    await task;
-                }
-            }
+        if (subscribers.Length == 0)
+        {
+            return;
         }
+
+        var tasks = subscribers.Select(subscriber =>
+            ExecuteSubscriberAsync(envelope, subscriber, _cts.Token));
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>
@@ -581,42 +546,192 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
     #region Helper Methods
 
-    private EventEnvelope CreateEventEnvelope<TEvent>(TEvent @event, PublishOptions? options)
-        where TEvent : notnull
+    private string ResolvePublishedTopic(Type eventType, string? topic)
     {
-        // 确定发布的 Topic
-        var topic = options?.Topic;
-        if (string.IsNullOrEmpty(topic))
+        if (!string.IsNullOrEmpty(topic))
         {
-            // 如果未指定 Topic，使用事件类型全名
-            topic = _keyProvider.GetKey(typeof(TEvent));
+            return topic;
         }
 
-        return new EventEnvelope
-        {
-            EventData = @event,
-            EventType = typeof(TEvent),
-            Timestamp = DateTimeOffset.UtcNow,
-            PartitionKey = options?.PartitionKey,
-            Priority = options?.Priority ?? 5,
-            CorrelationId = options?.CorrelationId,
-            Topic = topic,
-            AllowConcurrency = options?.AllowConcurrency ?? false
-        };
+        return _keyProvider.GetKey(eventType);
     }
 
-    private EventEnvelope CreateTopicEventEnvelope(string topic, object? eventData, PublishOptions? options)
+    private async ValueTask PublishToMatchedChannelsAsync(
+        object? eventData,
+        Type eventType,
+        string topic,
+        CancellationToken cancellationToken)
+    {
+        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(topic);
+        if (subscribers.IsEmpty)
+        {
+            return;
+        }
+
+        var explicitChannelIds = new HashSet<int>();
+        bool hasUnspecifiedSubscribers = false;
+
+        foreach (var subscriber in subscribers)
+        {
+            if (subscriber.ChannelId.HasValue)
+            {
+                explicitChannelIds.Add(subscriber.ChannelId.Value);
+            }
+            else
+            {
+                hasUnspecifiedSubscribers = true;
+            }
+        }
+
+        foreach (var explicitChannelId in explicitChannelIds)
+        {
+            var explicitEnvelope = CreateEventEnvelope(
+                eventData: eventData,
+                eventType: eventType,
+                topic: topic,
+                channelId: explicitChannelId,
+                routeAudience: EventRouteAudience.Explicit);
+
+            await EnqueueAsync(explicitEnvelope, cancellationToken);
+        }
+
+        if (hasUnspecifiedSubscribers)
+        {
+            var unspecifiedChannelId = ResolveUnspecifiedRouteChannelId();
+            var unspecifiedEnvelope = CreateEventEnvelope(
+                eventData: eventData,
+                eventType: eventType,
+                topic: topic,
+                channelId: unspecifiedChannelId,
+                routeAudience: EventRouteAudience.Unspecified);
+
+            await EnqueueAsync(unspecifiedEnvelope, cancellationToken);
+        }
+    }
+
+    private void PublishToMatchedChannelsSync(
+        object? eventData,
+        Type eventType,
+        string topic)
+    {
+        var subscribers = _subscriberRegistry.GetSubscribersByPublishedTopic(topic);
+        if (subscribers.IsEmpty)
+        {
+            return;
+        }
+
+        var explicitChannelIds = new HashSet<int>();
+        bool hasUnspecifiedSubscribers = false;
+
+        foreach (var subscriber in subscribers)
+        {
+            if (subscriber.ChannelId.HasValue)
+            {
+                explicitChannelIds.Add(subscriber.ChannelId.Value);
+            }
+            else
+            {
+                hasUnspecifiedSubscribers = true;
+            }
+        }
+
+        foreach (var explicitChannelId in explicitChannelIds)
+        {
+            var explicitEnvelope = CreateEventEnvelope(
+                eventData: eventData,
+                eventType: eventType,
+                topic: topic,
+                channelId: explicitChannelId,
+                routeAudience: EventRouteAudience.Explicit);
+
+            EnqueueOrThrow(explicitEnvelope);
+        }
+
+        if (hasUnspecifiedSubscribers)
+        {
+            var unspecifiedChannelId = ResolveUnspecifiedRouteChannelId();
+            var unspecifiedEnvelope = CreateEventEnvelope(
+                eventData: eventData,
+                eventType: eventType,
+                topic: topic,
+                channelId: unspecifiedChannelId,
+                routeAudience: EventRouteAudience.Unspecified);
+
+            EnqueueOrThrow(unspecifiedEnvelope);
+        }
+    }
+
+    private int ResolveUnspecifiedRouteChannelId()
+    {
+        var candidateChannelIds = new List<int>(_channelManager.ChannelCount) { 0 };
+
+        for (int channelId = 1; channelId < _channelManager.ChannelCount; channelId++)
+        {
+            if (Volatile.Read(ref _explicitChannelSubscriberCounts[channelId]) == 0)
+            {
+                candidateChannelIds.Add(channelId);
+            }
+        }
+
+        return _channelManager.SelectLeastLoadedChannelId(candidateChannelIds);
+    }
+
+    private async ValueTask EnqueueAsync(EventEnvelope envelope, CancellationToken cancellationToken)
+    {
+        var channel = _channelManager.GetChannel(envelope.ChannelId);
+        _channelManager.IncrementLoad(envelope.ChannelId);
+
+        try
+        {
+            await channel.Writer.WriteAsync(envelope, cancellationToken);
+        }
+        catch
+        {
+            _channelManager.DecrementLoad(envelope.ChannelId);
+            throw;
+        }
+    }
+
+    private bool TryEnqueue(EventEnvelope envelope)
+    {
+        var channel = _channelManager.GetChannel(envelope.ChannelId);
+        _channelManager.IncrementLoad(envelope.ChannelId);
+
+        if (channel.Writer.TryWrite(envelope))
+        {
+            return true;
+        }
+
+        _channelManager.DecrementLoad(envelope.ChannelId);
+        return false;
+    }
+
+    private void EnqueueOrThrow(EventEnvelope envelope)
+    {
+        if (TryEnqueue(envelope))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"无法将事件写入通道 {envelope.ChannelId}。通道可能已满或不可写。");
+    }
+
+    private EventEnvelope CreateEventEnvelope(
+        object? eventData,
+        Type eventType,
+        string topic,
+        int channelId,
+        EventRouteAudience routeAudience)
     {
         return new EventEnvelope
         {
-            EventData = eventData ?? new object(),
-            EventType = eventData?.GetType() ?? typeof(object),
+            EventData = eventData,
+            EventType = eventType,
             Timestamp = DateTimeOffset.UtcNow,
-            PartitionKey = options?.PartitionKey,
-            Priority = options?.Priority ?? 5,
-            CorrelationId = options?.CorrelationId,
-            Topic = topic,
-            AllowConcurrency = options?.AllowConcurrency ?? false
+            ChannelId = channelId,
+            RouteAudience = routeAudience,
+            Topic = topic
         };
     }
 
@@ -638,16 +753,16 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
 
         var threadOption = options?.ThreadOption ?? ThreadOption.BackgroundThread;
         ValidateThreadOption(threadOption);
+        ValidateChannelId(options?.ChannelId);
 
         return new SubscriberInfo(
             eventType: typeof(TEvent),
             target: target,
             method: method,
-            priority: options?.Priority ?? 5,
-            allowConcurrency: options?.AllowConcurrency ?? true,
             timeout: options?.Timeout,
             threadOption: threadOption,
             topic: topic,
+            channelId: options?.ChannelId,
             isParameterless: false);
     }
 
@@ -660,16 +775,16 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         var target = handler.Target ?? handler;
         var threadOption = options?.ThreadOption ?? ThreadOption.BackgroundThread;
         ValidateThreadOption(threadOption);
+        ValidateChannelId(options?.ChannelId);
 
         return new SubscriberInfo(
             eventType: typeof(object),
             target: target,
             method: method,
-            priority: options?.Priority ?? 5,
-            allowConcurrency: options?.AllowConcurrency ?? true,
             timeout: options?.Timeout,
             threadOption: threadOption,
             topic: topic,
+            channelId: options?.ChannelId,
             isParameterless: false);
     }
 
@@ -726,6 +841,8 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
             foreach (var attribute in attributes)
             {
                 ValidateThreadOption(attribute.ThreadOption);
+                int? channelId = attribute.ChannelId >= 0 ? attribute.ChannelId : null;
+                ValidateChannelId(channelId);
 
                 // 确定 Topic
                 var topic = attribute.Topic;
@@ -744,11 +861,10 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
                     eventType: eventType,
                     target: subscriber,
                     method: method,
-                    priority: attribute.Priority,
-                    allowConcurrency: attribute.AllowConcurrency,
                     timeout: attribute.Timeout > 0 ? TimeSpan.FromMilliseconds(attribute.Timeout) : null,
                     threadOption: attribute.ThreadOption,
                     topic: topic,
+                    channelId: channelId,
                     isParameterless: isParameterless);
 
                 result.Add(info);
@@ -764,6 +880,10 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     public void AddFilter(IEventFilter filter)
     {
         ArgumentNullException.ThrowIfNull(filter);
+        if (Volatile.Read(ref _dispatchStarted) == 1)
+        {
+            throw new InvalidOperationException("事件分发已启动后不支持动态添加过滤器。请在构造或启动前注册。");
+        }
         _filters.Add(filter);
         _filters.Sort((a, b) => a.Order.CompareTo(b.Order));
     }
@@ -774,8 +894,37 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
     public void AddInterceptor(IEventInterceptor interceptor)
     {
         ArgumentNullException.ThrowIfNull(interceptor);
+        if (Volatile.Read(ref _dispatchStarted) == 1)
+        {
+            throw new InvalidOperationException("事件分发已启动后不支持动态添加拦截器。请在构造或启动前注册。");
+        }
         _interceptors.Add(interceptor);
         _interceptors.Sort((a, b) => a.Order.CompareTo(b.Order));
+    }
+
+    private void TrackExplicitChannelSubscriber(SubscriberInfo subscriber)
+    {
+        if (!subscriber.ChannelId.HasValue)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _explicitChannelSubscriberCounts[subscriber.ChannelId.Value]);
+    }
+
+    private void UntrackExplicitChannelSubscriber(SubscriberInfo subscriber)
+    {
+        if (!subscriber.ChannelId.HasValue)
+        {
+            return;
+        }
+
+        var channelId = subscriber.ChannelId.Value;
+        var updated = Interlocked.Decrement(ref _explicitChannelSubscriberCounts[channelId]);
+        if (updated < 0)
+        {
+            Interlocked.Exchange(ref _explicitChannelSubscriberCounts[channelId], 0);
+        }
     }
 
     private void ValidateThreadOption(ThreadOption threadOption)
@@ -784,6 +933,14 @@ public sealed class DefaultEventBus : IEventBus, IEventBusDiagnostics
         {
             throw new InvalidOperationException(
                 "ThreadOption.UIThread 需要可用的 SynchronizationContext。请在 UI/Main 线程创建 EventBus，或通过构造函数传入 synchronizationContext。");
+        }
+    }
+
+    private void ValidateChannelId(int? channelId)
+    {
+        if (channelId.HasValue)
+        {
+            _channelManager.ValidateExplicitChannelId(channelId.Value);
         }
     }
 

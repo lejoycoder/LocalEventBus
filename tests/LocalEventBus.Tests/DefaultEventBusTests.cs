@@ -42,7 +42,7 @@ public sealed class DefaultEventBusTests
             return ValueTask.CompletedTask;
         }, new SubscribeOptions { Topic = "orders.created" });
 
-        await bus.PublishAsync("payload", new PublishOptions { Topic = "orders.created" });
+        await bus.PublishAsync("payload", "orders.created");
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(AssertionTimeout));
         Assert.True(completed == tcs.Task, "Topic 订阅未触发");
@@ -66,7 +66,7 @@ public sealed class DefaultEventBusTests
             return ValueTask.CompletedTask;
         }, new SubscribeOptions { Topic = "orders.created" });
 
-        await bus.PublishAsync(new TestEvent(9), new PublishOptions { Topic = "orders.*" });
+        await bus.PublishAsync(new TestEvent(9), "orders.*");
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(AssertionTimeout));
         Assert.True(completed == tcs.Task, "通配符匹配未生效");

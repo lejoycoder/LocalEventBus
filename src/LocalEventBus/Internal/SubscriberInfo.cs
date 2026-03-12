@@ -28,16 +28,6 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
     public MethodInfo Method { get; }
 
     /// <summary>
-    /// 优先级 (0-10，数字越大优先级越高)
-    /// </summary>
-    public int Priority { get; }
-
-    /// <summary>
-    /// 是否允许并发处理
-    /// </summary>
-    public bool AllowConcurrency { get; }
-
-    /// <summary>
     /// 处理超时时间
     /// </summary>
     public TimeSpan? Timeout { get; }
@@ -53,6 +43,12 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
     public string? Topic { get; }
 
     /// <summary>
+    /// 订阅通道编号
+    /// 如果为 null，则不限制通道（可接收所有通道的匹配事件）
+    /// </summary>
+    public int? ChannelId { get; }
+
+    /// <summary>
     /// 是否为无参方法（仅通过 Topic 触发）
     /// </summary>
     public bool IsParameterless { get; }
@@ -64,21 +60,19 @@ public sealed class SubscriberInfo : IEquatable<SubscriberInfo>
         Type eventType,
         object target,
         MethodInfo method,
-        int priority = 5,
-        bool allowConcurrency = true,
         TimeSpan? timeout = null,
         ThreadOption threadOption = ThreadOption.BackgroundThread,
         string? topic = null,
+        int? channelId = null,
         bool isParameterless = false)
     {
         EventType = eventType ?? throw new ArgumentNullException(nameof(eventType));
         Target = target ?? throw new ArgumentNullException(nameof(target));
         Method = method ?? throw new ArgumentNullException(nameof(method));
-        Priority = priority;
-        AllowConcurrency = allowConcurrency;
         Timeout = timeout;
         ThreadOption = threadOption;
         Topic = topic;
+        ChannelId = channelId;
         IsParameterless = isParameterless;
 
         // 编译时生成高性能委托

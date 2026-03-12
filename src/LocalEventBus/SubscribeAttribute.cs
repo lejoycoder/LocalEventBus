@@ -16,16 +16,6 @@ public sealed class SubscribeAttribute : Attribute
     public string? Topic { get; set; }
 
     /// <summary>
-    /// 优先级 (0-10，数字越大优先级越高，默认 5)
-    /// </summary>
-    public int Priority { get; set; } = 5;
-
-    /// <summary>
-    /// 是否允许并发处理
-    /// </summary>
-    public bool AllowConcurrency { get; set; } = true;
-
-    /// <summary>
     /// 超时时间（毫秒），0 表示使用默认值
     /// </summary>
     public double Timeout { get; set; } = 0;
@@ -34,6 +24,12 @@ public sealed class SubscribeAttribute : Attribute
     /// 订阅者执行线程选项（默认 BackgroundThread）
     /// </summary>
     public ThreadOption ThreadOption { get; set; } = ThreadOption.BackgroundThread;
+
+    /// <summary>
+    /// 订阅通道编号
+    /// 默认 -1，表示不限制通道（可接收所有通道的匹配事件）
+    /// </summary>
+    public int ChannelId { get; set; } = -1;
 
     /// <summary>
     /// 创建订阅特性

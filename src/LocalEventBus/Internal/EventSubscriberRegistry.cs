@@ -47,17 +47,7 @@ public sealed class EventSubscriberRegistry
         _subscribersByTopic.AddOrUpdate(
             topic,
             _ => ImmutableArray.Create(subscriber),
-            (_, existing) =>
-            {
-                // 按优先级排序插入
-                var list = existing.ToList();
-                int index = list.FindIndex(s => s.Priority < subscriber.Priority);
-                if (index < 0)
-                    list.Add(subscriber);
-                else
-                    list.Insert(index, subscriber);
-                return list.ToImmutableArray();
-            });
+            (_, existing) => existing.Add(subscriber));
 
         // 更新 Topic 列表
         RebuildTopicList();
@@ -175,9 +165,6 @@ public sealed class EventSubscriberRegistry
             }
         }
 
-        // 按优先级排序
-        result.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-
         return result.ToImmutableArray();
     }
 
@@ -199,6 +186,17 @@ public sealed class EventSubscriberRegistry
         return _subscribersByTopic.Values
             .SelectMany(s => s)
             .Distinct()
+            .ToList();
+    }
+
+    /// <summary>
+    /// 获取指定实例的所有订阅者（包含重复项）
+    /// </summary>
+    public IReadOnlyList<SubscriberInfo> GetSubscribersByTarget(object target)
+    {
+        return _subscribersByTopic.Values
+            .SelectMany(s => s)
+            .Where(s => ReferenceEquals(s.Target, target))
             .ToList();
     }
 

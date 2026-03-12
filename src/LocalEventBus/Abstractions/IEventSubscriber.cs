@@ -86,16 +86,6 @@ public sealed class SubscribeOptions
     public string? Topic { get; set; }
 
     /// <summary>
-    /// 优先级 (0-10，数字越大优先级越高)
-    /// </summary>
-    public int Priority { get; set; } = 5;
-
-    /// <summary>
-    /// 是否允许并发处理
-    /// </summary>
-    public bool AllowConcurrency { get; set; } = true;
-
-    /// <summary>
     /// 处理超时时间
     /// </summary>
     public TimeSpan? Timeout { get; set; }
@@ -104,4 +94,10 @@ public sealed class SubscribeOptions
     /// 订阅者执行线程选项（默认 BackgroundThread）
     /// </summary>
     public ThreadOption ThreadOption { get; set; } = ThreadOption.BackgroundThread;
+
+    /// <summary>
+    /// 订阅通道编号
+    /// 如果为 null，则不限制通道（可接收所有通道的匹配事件）
+    /// </summary>
+    public int? ChannelId { get; set; }
 }

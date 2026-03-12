@@ -23,7 +23,7 @@ public sealed class EventBusOptions
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>
-    /// 分片数量（用于哈希分片）
+    /// 通道数量（用于并发分流）
     /// <para>默认值: 4</para>
     /// <para>
     /// - 匹配现代 CPU 核心数（4-16 核）
@@ -32,11 +32,11 @@ public sealed class EventBusOptions
     /// - 低负载（&lt; 1K 事件/秒）：4-8
     /// - 中等负载（1K-10K 事件/秒）：16（默认）
     /// - 高负载（&gt; 10K 事件/秒）：32-64
-    /// - 单线程模式（全局顺序）：1
+    /// - 单机串行优先：2（最小值）
     /// </para>
-    /// <para>设置为 0 或 1 表示不分区（单线程处理）</para>
+    /// <para>最小值为 2：0 号为未指定通道，1..N-1 为显式通道</para>
     /// </summary>
-    public int PartitionCount { get; set; } = 1;
+    public int PartitionCount { get; set; } = 4;
 
     /// <summary>
     /// 重试选项

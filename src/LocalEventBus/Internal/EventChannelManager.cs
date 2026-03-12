@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using LocalEventBus.Abstractions;
 
@@ -10,12 +8,9 @@ namespace LocalEventBus.Internal;
 /// </summary>
 public sealed class EventChannelManager : IDisposable, IAsyncDisposable
 {
-    private readonly Channel<EventEnvelope>[] _shardedChannels;
+    private readonly Channel<EventEnvelope>[] _channels;
+    private readonly long[] _channelLoads;
     private readonly EventBusOptions _options;
-    private readonly int _shardCount;
-    private readonly ConcurrentDictionary<string, int> _partitionKeyToShardIndex;
-    private int _nextShardIndex = 0;
-    private readonly object _assignLock = new object();
 
     /// <summary>
     /// 初始化事件通道管理器
@@ -25,83 +20,154 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
     {
         _options = options ?? new EventBusOptions();
 
-        // 确定分片数量（至少1个）
-        _shardCount = Math.Max(1, _options.PartitionCount);
-
-        // 预先创建固定数量的分片通道
-        _shardedChannels = new Channel<EventEnvelope>[_shardCount];
-        for (int i = 0; i < _shardCount; i++)
+        if (_options.PartitionCount < 2)
         {
-            _shardedChannels[i] = CreateChannel();
+            throw new ArgumentOutOfRangeException(
+                nameof(options.PartitionCount),
+                _options.PartitionCount,
+                "PartitionCount 最小值为 2（0号为未指定通道，1..N-1为显式通道）。");
         }
 
-        // 初始化分区键映射字典
-        _partitionKeyToShardIndex = new ConcurrentDictionary<string, int>(Environment.ProcessorCount, _shardCount);
+        ChannelCount = _options.PartitionCount;
+        _channels = new Channel<EventEnvelope>[ChannelCount];
+        _channelLoads = new long[ChannelCount];
+
+        for (int i = 0; i < ChannelCount; i++)
+        {
+            _channels[i] = CreateChannel();
+        }
     }
 
     /// <summary>
-    /// 获取通道（按分区键智能分片）
+    /// 通道数量（由 PartitionCount 决定）
     /// </summary>
-    /// <remarks>
-    /// 当分区键数量不超过分片数量时，直接映射到固定分片；
-    /// 当分区键数量超过分片数量时，使用哈希分区策略。
-    /// </remarks>
-    public Channel<EventEnvelope> GetChannel(string? partitionKey)
+    public int ChannelCount { get; }
+
+    /// <summary>
+    /// 根据通道编号获取通道
+    /// </summary>
+    public Channel<EventEnvelope> GetChannel(int channelId)
     {
-        // 如果没有分区键,使用第一个分片
-        if (string.IsNullOrEmpty(partitionKey) || _shardCount == 1)
-        {
-            return _shardedChannels[0];
-        }
+        ValidateChannelId(channelId);
+        return _channels[channelId];
+    }
 
-        // 如果已经有映射,直接返回
-        if (_partitionKeyToShardIndex.TryGetValue(partitionKey, out var existingShardIndex))
+    /// <summary>
+    /// 校验通道编号
+    /// </summary>
+    public void ValidateChannelId(int channelId)
+    {
+        if (channelId < 0 || channelId >= ChannelCount)
         {
-            return _shardedChannels[existingShardIndex];
+            throw new ArgumentOutOfRangeException(
+                nameof(channelId),
+                channelId,
+                $"ChannelId 必须在 [0, {ChannelCount - 1}] 范围内。");
         }
+    }
 
-        // 当分区键数量未超过分片数量时,直接分配新的分片
-        if (_partitionKeyToShardIndex.Count < _shardCount)
+    /// <summary>
+    /// 校验显式通道编号（1..N-1）
+    /// </summary>
+    public void ValidateExplicitChannelId(int channelId)
+    {
+        if (channelId <= 0 || channelId >= ChannelCount)
         {
-            lock (_assignLock)
+            throw new ArgumentOutOfRangeException(
+                nameof(channelId),
+                channelId,
+                $"显式 ChannelId 必须在 [1, {ChannelCount - 1}] 范围内。0 号保留为未指定通道。");
+        }
+    }
+
+    /// <summary>
+    /// 入队成功后增加通道负载
+    /// </summary>
+    public void IncrementLoad(int channelId)
+    {
+        ValidateChannelId(channelId);
+        Interlocked.Increment(ref _channelLoads[channelId]);
+    }
+
+    /// <summary>
+    /// 事件处理完成后减少通道负载
+    /// </summary>
+    public void DecrementLoad(int channelId)
+    {
+        ValidateChannelId(channelId);
+        var updated = Interlocked.Decrement(ref _channelLoads[channelId]);
+        if (updated < 0)
+        {
+            Interlocked.Exchange(ref _channelLoads[channelId], 0);
+        }
+    }
+
+    /// <summary>
+    /// 获取待处理事件数量（估算值，基于负载计数）
+    /// </summary>
+    public int GetPendingCount()
+    {
+        long total = 0;
+        for (int i = 0; i < _channelLoads.Length; i++)
+        {
+            var load = Volatile.Read(ref _channelLoads[i]);
+            if (load > 0)
             {
-                // 双重检查,避免并发时重复分配
-                if (_partitionKeyToShardIndex.TryGetValue(partitionKey, out existingShardIndex))
-                {
-                    return _shardedChannels[existingShardIndex];
-                }
+                total += load;
+            }
+        }
 
-                // 再次检查是否仍在独立分配阶段
-                if (_partitionKeyToShardIndex.Count < _shardCount)
-                {
-                    // 分配下一个可用的分片索引
-                    var shardIndex = _nextShardIndex;
-                    _nextShardIndex = (_nextShardIndex + 1) % _shardCount;
+        return total > int.MaxValue ? int.MaxValue : (int)total;
+    }
 
-                    _partitionKeyToShardIndex[partitionKey] = shardIndex;
-                    return _shardedChannels[shardIndex];
+    /// <summary>
+    /// 获取所有通道（用于独立处理每个通道）
+    /// </summary>
+    public IReadOnlyList<Channel<EventEnvelope>> GetShardedChannels()
+    {
+        return _channels;
+    }
+
+    /// <summary>
+    /// 在候选通道集合中选择最空闲通道（并列随机）
+    /// </summary>
+    public int SelectLeastLoadedChannelId(IReadOnlyList<int> candidateChannelIds)
+    {
+        if (candidateChannelIds is null || candidateChannelIds.Count == 0)
+        {
+            throw new ArgumentException("候选通道不能为空。", nameof(candidateChannelIds));
+        }
+
+        long minLoad = long.MaxValue;
+        int selected = candidateChannelIds[0];
+        int tieCount = 0;
+
+        for (int i = 0; i < candidateChannelIds.Count; i++)
+        {
+            var channelId = candidateChannelIds[i];
+            ValidateChannelId(channelId);
+
+            var load = Volatile.Read(ref _channelLoads[channelId]);
+            if (load < minLoad)
+            {
+                minLoad = load;
+                selected = channelId;
+                tieCount = 1;
+                continue;
+            }
+
+            if (load == minLoad)
+            {
+                tieCount++;
+                // 蓄水池采样：在负载并列时随机打散
+                if (Random.Shared.Next(tieCount) == 0)
+                {
+                    selected = channelId;
                 }
             }
         }
 
-        // 分区键数量超过分片数量,使用哈希分区
-        var hashCode = partitionKey.GetHashCode();
-        var hashBasedShardIndex = Math.Abs(hashCode % _shardCount);
-
-        return _shardedChannels[hashBasedShardIndex];
-    }
-
-    /// <summary>
-    /// 获取待处理事件数量
-    /// </summary>
-    public int GetPendingCount()
-    {
-        int count = 0;
-        foreach (var channel in _shardedChannels)
-        {
-            count += channel.Reader.Count;
-        }
-        return count;
+        return selected;
     }
 
     /// <summary>
@@ -111,7 +177,6 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
     {
         if (_options.ChannelCapacity > 0)
         {
-            // 有界通道
             return Channel.CreateBounded<EventEnvelope>(new BoundedChannelOptions(_options.ChannelCapacity)
             {
                 FullMode = _options.ChannelFullMode,
@@ -119,90 +184,12 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
                 SingleWriter = false
             });
         }
-        else
+
+        return Channel.CreateUnbounded<EventEnvelope>(new UnboundedChannelOptions
         {
-            // 无界通道
-            return Channel.CreateUnbounded<EventEnvelope>(new UnboundedChannelOptions
-            {
-                SingleReader = true,
-                SingleWriter = false
-            });
-        }
-    }
-
-    /// <summary>
-    /// 读取所有通道的事件（合并所有分片）
-    /// </summary>
-    public async IAsyncEnumerable<EventEnvelope> ReadAllAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var readers = _shardedChannels.Select(c => c.Reader).ToArray();
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            bool anyRead = false;
-
-            // 轮询所有分片尝试读取
-            foreach (var reader in readers)
-            {
-                while (reader.TryRead(out var envelope))
-                {
-                    yield return envelope;
-                    anyRead = true;
-                }
-            }
-
-            if (!anyRead)
-            {
-                // 等待任意分片有数据
-                var tasks = readers.Select(r => r.WaitToReadAsync(cancellationToken).AsTask()).ToArray();
-                try
-                {
-                    await Task.WhenAny(tasks);
-                }
-                catch (OperationCanceledException)
-                {
-                    yield break;
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// 获取所有分片通道（用于独立处理每个分片）
-    /// </summary>
-    public IReadOnlyList<Channel<EventEnvelope>> GetShardedChannels()
-    {
-        return _shardedChannels;
-    }
-
-    /// <summary>
-    /// 获取当前已分配的分区键数量
-    /// </summary>
-    public int GetPartitionKeyCount()
-    {
-        return _partitionKeyToShardIndex.Count;
-    }
-
-    /// <summary>
-    /// 获取分区键的分片索引（如果存在）
-    /// </summary>
-    /// <param name="partitionKey">分区键</param>
-    /// <returns>分片索引，如果不存在则返回 null</returns>
-    public int? GetShardIndexForPartitionKey(string partitionKey)
-    {
-        return _partitionKeyToShardIndex.TryGetValue(partitionKey, out var index) ? index : null;
-    }
-
-    /// <summary>
-    /// 获取每个分片的分区键分布情况
-    /// </summary>
-    /// <returns>分片索引到分区键列表的映射</returns>
-    public IReadOnlyDictionary<int, IReadOnlyList<string>> GetPartitionKeyDistribution()
-    {
-        return _partitionKeyToShardIndex
-            .GroupBy(kvp => kvp.Value, kvp => kvp.Key)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.ToList());
+            SingleReader = true,
+            SingleWriter = false
+        });
     }
 
     /// <summary>
@@ -210,7 +197,7 @@ public sealed class EventChannelManager : IDisposable, IAsyncDisposable
     /// </summary>
     public void Dispose()
     {
-        foreach (var channel in _shardedChannels)
+        foreach (var channel in _channels)
         {
             channel.Writer.Complete();
         }

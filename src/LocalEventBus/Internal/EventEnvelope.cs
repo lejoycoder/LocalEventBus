@@ -1,6 +1,22 @@
 namespace LocalEventBus.Internal;
 
 /// <summary>
+/// 事件路由受众
+/// </summary>
+public enum EventRouteAudience
+{
+    /// <summary>
+    /// 显式通道订阅者（ChannelId=1..N-1）
+    /// </summary>
+    Explicit = 0,
+
+    /// <summary>
+    /// 未指定通道订阅者（ChannelId=null）
+    /// </summary>
+    Unspecified = 1
+}
+
+/// <summary>
 /// 事件信封（包装事件数据）
 /// </summary>
 public sealed class EventEnvelope
@@ -8,7 +24,7 @@ public sealed class EventEnvelope
     /// <summary>
     /// 事件数据
     /// </summary>
-    public required object EventData { get; init; }
+    public required object? EventData { get; init; }
 
     /// <summary>
     /// 事件类型
@@ -21,27 +37,18 @@ public sealed class EventEnvelope
     public required DateTimeOffset Timestamp { get; init; }
 
     /// <summary>
-    /// 分区键
+    /// 发布通道编号
     /// </summary>
-    public string? PartitionKey { get; init; }
+    public int ChannelId { get; init; }
 
     /// <summary>
-    /// 优先级
+    /// 路由受众
     /// </summary>
-    public int Priority { get; init; } = 5;
-
-    /// <summary>
-    /// 关联ID
-    /// </summary>
-    public string? CorrelationId { get; init; }
+    public EventRouteAudience RouteAudience { get; init; } = EventRouteAudience.Explicit;
 
     /// <summary>
     /// 主题
     /// </summary>
     public string? Topic { get; init; }
 
-    /// <summary>
-    /// 是否允许并发执行
-    /// </summary>
-    public bool AllowConcurrency { get; init; }
 }

@@ -15,7 +15,7 @@
 - 🎯 **事件过滤** - 按条件过滤事件
 - 🔌 **拦截器** - 支持前置、后置、失败拦截，用于监控、日志和异常处理
 - ⚡ **异步优先** - 基于 `Channel<T>` 的异步事件队列
-- 🔀 **哈希分片** - 支持固定数量的分片通道，保证顺序性的同时提升并发性能
+- 🔀 **订阅驱动通道路由** - 0号未指定通道 + 显式通道隔离，支持按负载自动分流
 - 📍 **直接调用** - 支持 `InvokeAsync` 直接调用订阅者，无需通过事件队列
 - 🔧 **依赖注入** - 原生支持 Microsoft.Extensions.DependencyInjection
 - 🎨 **灵活匹配** - 支持精确匹配、通配符（*）、正则表达式匹配
@@ -44,7 +44,7 @@ var eventBus = EventBusFactory.Create(options =>
 {
     options.ChannelCapacity = 1000;
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
-    options.PartitionCount = 4;  // 配置分片数量
+    options.PartitionCount = 4;  // 配置通道数量（最小2）
     options.RetryOptions.MaxRetryAttempts = 3;
     options.RetryOptions.DelayStrategy = RetryDelayStrategy.ExponentialBackoff;
 });
@@ -63,7 +63,7 @@ services.AddLocalEventBus(options =>
 {
     options.ChannelCapacity = 1000;
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
-    options.PartitionCount = 4;  // 配置分片数量
+    options.PartitionCount = 4;  // 配置通道数量（最小2）
     options.RetryOptions.MaxRetryAttempts = 3;
     options.RetryOptions.DelayStrategy = RetryDelayStrategy.ExponentialBackoff;
 });
@@ -95,14 +95,17 @@ await eventBus.PublishAsync(new OrderCreatedEvent(123, "张三", 99.99m));
 // 同步发布（入队不等待处理）
 eventBus.Publish(new OrderCreatedEvent(456, "李四", 199.99m));
 
-// 批量发布
+// 连续发布多个事件（按需自行循环）
 var orders = new[]
 {
     new OrderCreatedEvent(1, "Customer1", 100m),
     new OrderCreatedEvent(2, "Customer2", 200m),
     new OrderCreatedEvent(3, "Customer3", 300m)
 };
-await eventBus.PublishBatchAsync(orders);
+foreach (var order in orders)
+{
+    await eventBus.PublishAsync(order);
+}
 
 // 直接调用（不经过队列，同步等待处理完成）
 await eventBus.InvokeAsync(new OrderCreatedEvent(100, "DirectCall", 500m));
@@ -191,8 +194,9 @@ var eventBus = EventBusFactory.Create(options =>
     // 默认处理超时
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
     
-    // 分片数量（用于哈希分片，默认1）
-    // - 单线程模式（全局顺序）：1（默认）
+    // 通道数量（最小2）
+    // - 0号通道：未指定通道
+    // - 1..N-1：显式通道
     // - 低负载（< 1K 事件/秒）：4-8
     // - 中等负载（1K-10K 事件/秒）：16
     // - 高负载（> 10K 事件/秒）：32-64
@@ -213,34 +217,28 @@ eventBus.Subscribe<OrderCreatedEvent>(handler, new SubscribeOptions
 {
     // 主题名称（可选，不指定则使用事件类型全名）
     Topic = "orders/created",
-    
-    // 优先级（0-10，越大越先执行，默认5）
-    Priority = 10,
-    
-    // 是否允许并发处理（默认true）
-    AllowConcurrency = true,
+
+    // 显式订阅通道（可选，范围 1..PartitionCount-1）
+    // null 表示未指定通道订阅
+    ChannelId = 1,
     
     // 处理超时（默认使用 EventBusOptions.DefaultTimeout）
     Timeout = TimeSpan.FromSeconds(10)
 });
 ```
 
-### PublishOptions
+### 发布时指定 Topic
 
 ```csharp
+// 强类型事件：可直接在发布时指定 topic
 await eventBus.PublishAsync(
     new OrderCreatedEvent(123, "Alice", 100m),
-    new PublishOptions
-    {
-        // 主题名称（可选，不指定则使用事件类型全名）
-        Topic = "orders/created",
-        
-        // 分区键（相同分区键的事件保证有序处理）
-        PartitionKey = "user:alice",
-        
-        // 优先级（0-10，默认5）
-        Priority = 8
-    });
+    "orders/created");
+
+// 或使用扩展方法
+await eventBus.PublishToTopicAsync(
+    new OrderCreatedEvent(123, "Alice", 100m),
+    "orders/created");
 ```
 
 ### SubscribeAttribute
@@ -252,9 +250,9 @@ public class MyHandler
     [Subscribe("orders/vip")]
     public void HandleVipOrder(OrderCreatedEvent e) { }
 
-    // 设置优先级和超时
-    [Subscribe(Priority = 10, Timeout = 5000, AllowConcurrency = false)]
-    public void HandleHighPriority(OrderCreatedEvent e) { }
+    // 设置超时
+    [Subscribe(Timeout = 5000)]
+    public void HandleOrder(OrderCreatedEvent e) { }
 }
 ```
 
@@ -315,43 +313,40 @@ public class LoggingInterceptor : IEventInterceptor
 eventBus.AddInterceptor(new LoggingInterceptor());
 ```
 
-### 哈希分片（Hash-based Sharding）
+### 订阅驱动通道路由
 
-LocalEventBus 使用哈希分片架构来提升并发性能，同时保证同一分区键的事件顺序性。
+LocalEventBus 采用“订阅驱动”的通道模型：
+- `0` 号通道固定为未指定通道
+- `1..PartitionCount-1` 为显式通道（订阅时指定）
+- 发布侧无需指定通道，框架根据匹配订阅者自动决定写入目标通道
 
 ```csharp
-// 配置分片数量
 var eventBus = EventBusFactory.Create(options =>
 {
-    options.PartitionCount = 32  // 默认1，推荐设置为CPU核心数的2-4倍
+    options.PartitionCount = 8; // 最小2，0号保留为未指定通道
 });
 
-// 使用分区键发布事件
-await eventBus.PublishAsync(
-    new OrderCreatedEvent(123, "Alice", 100m),
-    new PublishOptions { PartitionKey = "user:alice" }
-);
+// 显式通道订阅
+eventBus.Subscribe<OrderCreatedEvent>(
+    handler: order => Console.WriteLine($"C1: {order.OrderId}"),
+    options: new SubscribeOptions { ChannelId = 1 });
 
-// 相同分区键的事件保证按顺序处理
-await eventBus.PublishAsync(event1, new PublishOptions { PartitionKey = "user:123" });
-await eventBus.PublishAsync(event2, new PublishOptions { PartitionKey = "user:123" });
-await eventBus.PublishAsync(event3, new PublishOptions { PartitionKey = "user:123" });
-// ✅ event1 -> event2 -> event3 保证顺序
+eventBus.Subscribe<OrderCreatedEvent>(
+    handler: order => Console.WriteLine($"C2: {order.OrderId}"),
+    options: new SubscribeOptions { ChannelId = 2 });
 
-// 不同分区键的事件可以并发处理
-await eventBus.PublishAsync(event1, new PublishOptions { PartitionKey = "user:123" });
-await eventBus.PublishAsync(event2, new PublishOptions { PartitionKey = "user:456" });
-// ⚡ event1 和 event2 可能并发处理
+// 未指定通道订阅（ChannelId = null）
+eventBus.Subscribe<OrderCreatedEvent>(order => Console.WriteLine($"Default: {order.OrderId}"));
+
+// 发布时无需传通道参数，框架会按匹配订阅者进行路由
+await eventBus.PublishAsync(new OrderCreatedEvent(123, "Alice", 100m));
 ```
 
-**分片特性：**
-- ✅ 固定数量的分片通道，在初始化时创建
-- ✅ 使用哈希算法将分区键映射到分片
-- ✅ 同一分区键的事件保证顺序处理
-- ✅ 不同分片的事件可以并发处理
-- ✅ 减少锁竞争，提升吞吐量
-
-详见：[哈希分片架构文档](docs/HASH_SHARDING_ARCHITECTURE.md)
+**路由规则：**
+- ✅ 命中显式通道订阅者：按通道去重后分别入队（可跨通道并行）
+- ✅ 命中未指定订阅者：写入“未指定通道池”，按最小负载自动选择（并列随机）
+- ✅ 未指定通道池 = `{0} ∪ {当前未被显式订阅占用的通道}`
+- ✅ 无匹配订阅者时直接跳过入队
 
 ### 直接调用订阅者（InvokeAsync）
 
@@ -375,7 +370,7 @@ await eventBus.InvokeByTopicAsync("user/notification",
 - 测试场景下验证订阅者行为
 
 **注意事项：**
-- `InvokeAsync` 会同步调用所有订阅者（按优先级顺序）
+- `InvokeAsync` 会同步调用所有匹配订阅者
 - ✅ **会应用过滤器**（可以过滤不需要处理的事件）
 - ❌ **不会触发拦截器**（OnHandlingAsync、OnHandledAsync、OnHandlerFailedAsync 都不会被调用）
 - ✅ **支持超时机制**（会应用 SubscribeOptions.Timeout 或 EventBusOptions.DefaultTimeout）
@@ -391,7 +386,7 @@ await eventBus.InvokeByTopicAsync("user/notification",
 | 超时 | ✅ 支持 | ✅ 支持 |
 | 重试 | ✅ 支持 | ❌ 不支持 |
 | 异常处理 | 拦截器处理 | 调用方处理 |
-| 顺序保证 | ✅ 同分区键保证 | ✅ 按优先级顺序 |
+| 顺序保证 | ✅ 同通道 FIFO | ❌ 不保证执行顺序 |
 
 ### Topic 匹配器
 
@@ -496,33 +491,36 @@ if (eventBus is IEventBusDiagnostics diagnostics)
 
 ## 💡 最佳实践
 
-### 1. 合理配置分片数量
+### 1. 合理配置通道数量
 
 ```csharp
-// 根据负载和CPU核心数选择合适的分片数量
+// 根据负载和CPU核心数选择合适的通道数量
 var eventBus = EventBusFactory.Create(options =>
 {
-    // 单线程模式（保证全局顺序）
-    options.PartitionCount = 1;  
-    
+    // 最小值 2（0号未指定通道 + 至少1个显式通道）
+    options.PartitionCount = 2;
+
     // 多核并发（推荐：CPU核心数的2-4倍）
     // 例如：8核CPU可以设置为16-32
     options.PartitionCount = Environment.ProcessorCount * 2;
 });
 ```
 
-### 2. 使用分区键保证顺序
+### 2. 使用显式通道做隔离
 
 ```csharp
-// 同一用户的事件使用相同的分区键，保证按顺序处理
-await eventBus.PublishAsync(
-    new UserLoginEvent(userId),
-    new PublishOptions { PartitionKey = $"user:{userId}" });
+// 将关键业务绑定到显式通道 1
+eventBus.Subscribe<UserLoginEvent>(
+    e => HandleUserLogin(e),
+    new SubscribeOptions { ChannelId = 1 });
 
-await eventBus.PublishAsync(
-    new UserLogoutEvent(userId),
-    new PublishOptions { PartitionKey = $"user:{userId}" });
-// ✅ 保证先处理登录，再处理登出
+eventBus.Subscribe<UserLogoutEvent>(
+    e => HandleUserLogout(e),
+    new SubscribeOptions { ChannelId = 1 });
+
+// 发布侧无需关心通道，框架按订阅者自动路由
+await eventBus.PublishAsync(new UserLoginEvent(userId));
+await eventBus.PublishAsync(new UserLogoutEvent(userId));
 ```
 
 ### 3. 使用拦截器统一处理日志和监控
@@ -641,7 +639,7 @@ public async ValueTask HandleOrderCreated(OrderCreatedEvent e, CancellationToken
 | 订阅者调用 | Expression 树编译委托 | 比反射快 15 倍 |
 | 并发控制 | ConcurrentDictionary + ImmutableArray | 无锁设计，零拷贝 |
 | 事件分发 | Channel<T> 异步队列 | 高吞吐量，低延迟 |
-| 分片处理 | 哈希分片（固定通道数） | 并发性能提升 2-5 倍 |
+| 通道路由 | 订阅驱动通道路由（固定通道数） | 并发性能提升 2-5 倍 |
 | 内存分配 | 不可变集合 + 对象池 | 极低 GC 压力 |
 
 ### 性能指标（参考值）
@@ -651,7 +649,7 @@ public async ValueTask HandleOrderCreated(OrderCreatedEvent e, CancellationToken
 | 单订阅者 | ~100K ops/s | ~10μs | ~50μs |
 | 10 订阅者 | ~50K ops/s | ~20μs | ~100μs |
 | 100 订阅者 | ~10K ops/s | ~100μs | ~500μs |
-| 分片模式（16分片） | ~200K ops/s | ~5μs | ~30μs |
+| 多通道模式（16通道） | ~200K ops/s | ~5μs | ~30μs |
 
 *测试环境: .NET 8.0, Intel i7-12700, 16GB RAM, Windows 11*
 
@@ -746,11 +744,11 @@ public class EventBusBenchmark
 **A:** `PublishAsync` 将事件放入队列异步处理，支持拦截器和重试；`InvokeAsync` 直接同步调用订阅者，不触发拦截器，适用于需要立即执行的场景。
 
 ### Q: 如何保证事件的处理顺序？
-**A:** 使用相同的 `PartitionKey` 发布事件，相同分区键的事件会被路由到同一个分片通道，保证顺序处理。
+**A:** 通道内是 FIFO 顺序处理。显式通道订阅者按绑定通道顺序消费；未指定订阅者在“未指定通道池”中按负载选路并保持各通道内顺序。
 
-### Q: 分片数量（PartitionCount）应该设置为多少？
+### Q: 通道数量（PartitionCount）应该设置为多少？
 **A:** 
-- 单线程模式（全局顺序）：1（默认）
+- 最小值：2（`0` 号未指定通道 + 至少1个显式通道）
 - 低负载（< 1K 事件/秒）：4-8
 - 中等负载（1K-10K 事件/秒）：16
 - 高负载（> 10K 事件/秒）：32-64

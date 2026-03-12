@@ -30,26 +30,26 @@ public class InvokeAsyncTests
         }
     }
 
-    private class PriorityHandler
+    private class MultiHandler
     {
-        public List<string> ExecutionOrder { get; } = new();
+        public List<string> Invoked { get; } = new();
 
-        [Subscribe(Priority = 10)]
-        public void HighPriority(MessageEvent e)
+        [Subscribe]
+        public void First(MessageEvent e)
         {
-            ExecutionOrder.Add("High");
+            Invoked.Add("First");
         }
 
-        [Subscribe(Priority = 5)]
-        public void MediumPriority(MessageEvent e)
+        [Subscribe]
+        public void Second(MessageEvent e)
         {
-            ExecutionOrder.Add("Medium");
+            Invoked.Add("Second");
         }
 
-        [Subscribe(Priority = 1)]
-        public void LowPriority(MessageEvent e)
+        [Subscribe]
+        public void Third(MessageEvent e)
         {
-            ExecutionOrder.Add("Low");
+            Invoked.Add("Third");
         }
     }
 
@@ -118,21 +118,21 @@ public class InvokeAsyncTests
     }
 
     [Fact]
-    public async Task InvokeAsync_Should_Respect_Priority()
+    public async Task InvokeAsync_Should_Invoke_All_Handlers()
     {
         // Arrange
         using var eventBus = EventBusFactory.Create();
-        var handler = new PriorityHandler();
+        var handler = new MultiHandler();
         eventBus.Subscribe(handler);
 
         // Act
         await eventBus.InvokeAsync(new MessageEvent("Test"));
 
-        // Assert - 高优先级应该先执行
-        Assert.Equal(3, handler.ExecutionOrder.Count);
-        Assert.Equal("High", handler.ExecutionOrder[0]);
-        Assert.Equal("Medium", handler.ExecutionOrder[1]);
-        Assert.Equal("Low", handler.ExecutionOrder[2]);
+        // Assert - 不保证顺序，但应全部执行
+        Assert.Equal(3, handler.Invoked.Count);
+        Assert.Contains("First", handler.Invoked);
+        Assert.Contains("Second", handler.Invoked);
+        Assert.Contains("Third", handler.Invoked);
     }
 
     [Fact]

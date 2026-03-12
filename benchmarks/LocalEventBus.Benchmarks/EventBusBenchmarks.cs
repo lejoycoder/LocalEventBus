@@ -47,7 +47,7 @@ public class EventBusBenchmarks
     }
 
     [Benchmark(Description = "Publish enqueue (typed)")]
-    public bool PublishEnqueue() => _bus.Publish(_event);
+    public void PublishEnqueue() => _bus.Publish(_event);
 
     [Benchmark(Description = "Publish async (typed)")]
     public Task PublishAsync() => _bus.PublishAsync(_event).AsTask();

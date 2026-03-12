@@ -14,7 +14,7 @@ public static class EventBusExtensions
     public static ValueTask PublishAsync<TEvent>(this IEventPublisher publisher, TEvent @event, CancellationToken cancellationToken = default)
         where TEvent : notnull
     {
-        return publisher.PublishAsync(@event, null, cancellationToken);
+        return publisher.PublishAsync(@event, topic: null, cancellationToken);
     }
 
     /// <summary>
@@ -27,16 +27,16 @@ public static class EventBusExtensions
         CancellationToken cancellationToken = default)
         where TEvent : notnull
     {
-        return publisher.PublishAsync(@event, new PublishOptions { Topic = topic }, cancellationToken);
+        return publisher.PublishAsync(@event, topic, cancellationToken);
     }
 
     /// <summary>
     /// 发布事件
     /// </summary>
-    public static bool PublishToTopic<TEvent>(this IEventPublisher publisher, TEvent @event, string topic)
+    public static void PublishToTopic<TEvent>(this IEventPublisher publisher, TEvent @event, string topic)
         where TEvent : notnull
     {
-        return publisher.Publish(@event, new PublishOptions { Topic = topic });
+        publisher.Publish(@event, topic);
     }
 
     /// <summary>
