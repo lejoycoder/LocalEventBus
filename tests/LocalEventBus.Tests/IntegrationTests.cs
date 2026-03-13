@@ -120,10 +120,13 @@ public class IntegrationTests
         subscription.Dispose();
         handler.ExecutedTopics.Clear();
 
-        // Act - 再次调用，不应该有反应
-        await eventBus.InvokeByTopicAsync("orders/created");
+        // Act - 再次调用，应因无匹配订阅者抛出异常
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.InvokeByTopicAsync("orders/created").AsTask());
 
         // Assert
+        Assert.Contains("orders/created", exception.Message);
+        Assert.Contains("匹配数量: 0", exception.Message);
         Assert.Empty(handler.ExecutedTopics);
     }
 

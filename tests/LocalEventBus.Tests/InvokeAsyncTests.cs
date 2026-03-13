@@ -149,13 +149,16 @@ public class InvokeAsyncTests
     }
 
     [Fact]
-    public async Task InvokeAsync_With_No_Subscribers_Should_Not_Throw()
+    public async Task InvokeAsync_With_No_Subscribers_Should_Throw()
     {
         // Arrange
         using var eventBus = EventBusFactory.Create();
 
-        // Act & Assert - 没有订阅者时不应抛出异常
-        await eventBus.InvokeAsync(new OrderCreatedEvent(1, "Test", 100m));
+        // Act & Assert - 没有订阅者时应抛出异常
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.InvokeAsync(new OrderCreatedEvent(1, "Test", 100m)).AsTask());
+
+        Assert.Contains("匹配数量: 0", exception.Message);
     }
 
     [Fact]
@@ -202,7 +205,7 @@ public class InvokeAsyncTests
     }
 
     [Fact]
-    public async Task InvokeByTopicAsync_With_No_Matching_Topic_Should_Not_Call()
+    public async Task InvokeByTopicAsync_With_No_Matching_Topic_Should_Throw_And_Not_Call()
     {
         // Arrange
         using var eventBus = EventBusFactory.Create();
@@ -214,10 +217,12 @@ public class InvokeAsyncTests
             return ValueTask.CompletedTask;
         }, new SubscribeOptions { Topic = "other/topic" });
 
-        // Act
-        await eventBus.InvokeByTopicAsync("test/topic", new MessageEvent("Hello"));
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => eventBus.InvokeByTopicAsync("test/topic", new MessageEvent("Hello")).AsTask());
 
-        // Assert
+        Assert.Contains("test/topic", exception.Message);
+        Assert.Contains("匹配数量: 0", exception.Message);
         Assert.Equal(0, callCount);
     }
 

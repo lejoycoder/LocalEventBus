@@ -5,8 +5,7 @@ namespace LocalEventBus.Internal;
 /// </summary>
 internal sealed class SubscriptionToken : IDisposable
 {
-    private readonly Action _unsubscribe;
-    private int _disposed;
+    private Action? _unsubscribe;
 
     public SubscriptionToken(Action unsubscribe)
     {
@@ -15,9 +14,7 @@ internal sealed class SubscriptionToken : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 0)
-        {
-            _unsubscribe();
-        }
+        var unsubscribe = Interlocked.Exchange(ref _unsubscribe, null);
+        unsubscribe?.Invoke();
     }
 }

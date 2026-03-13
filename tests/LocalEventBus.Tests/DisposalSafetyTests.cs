@@ -46,4 +46,41 @@ public sealed class DisposalSafetyTests
         Assert.Throws<ObjectDisposedException>(() =>
             bus.AddFilter(new PassThroughFilter()));
     }
+
+    [Fact]
+    public void SubscriptionToken_Dispose_Should_Release_Unsubscribe_Closure_References()
+    {
+        using var bus = EventBusFactory.Create();
+        var (weakReference, token) = CreateDisposedTokenWithCapturedObject(bus);
+
+        ForceFullGc();
+
+        Assert.False(weakReference.IsAlive);
+        GC.KeepAlive(token);
+    }
+
+    private static (WeakReference WeakReference, IDisposable Token) CreateDisposedTokenWithCapturedObject(IEventBus bus)
+    {
+        var captured = new object();
+        var weakReference = new WeakReference(captured);
+
+        var token = bus.Subscribe<MessageEvent>((_, _) =>
+        {
+            GC.KeepAlive(captured);
+            return ValueTask.CompletedTask;
+        });
+
+        token.Dispose();
+        return (weakReference, token);
+    }
+
+    private static void ForceFullGc()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+    }
 }
