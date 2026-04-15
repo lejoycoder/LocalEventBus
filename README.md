@@ -5,6 +5,23 @@
 
 一个高性能、轻量级的本地事件总线库，专为 .NET 8+ 设计。
 
+## 目录
+
+- [特性](#特性)
+- [安装](#安装)
+- [使用路径怎么选](#使用路径怎么选)
+- [快速开始](#快速开始)
+- [订阅 API 详解](#订阅-api-详解)
+- [配置与约定](#配置与约定)
+- [高级功能](#高级功能)
+- [最佳实践](#最佳实践)
+- [性能特性](#性能特性)
+- [架构](#架构)
+- [要求](#要求)
+- [FAQ](#faq)
+- [许可证](#许可证)
+- [相关资源](#相关资源)
+
 ## ✨ 特性
 
 - 🚀 **高性能** - 使用 Expression 树编译委托，比反射快 15 倍
@@ -25,6 +42,21 @@
 ```bash
 dotnet add package LocalEventBus
 ```
+
+## 🧭 使用路径怎么选
+
+先选对 API，再往下看示例与配置，可避免最常见的误用（例如多个订阅者时调用 `InvokeAsync`）。
+
+| 你的目标 | 推荐用法 | 需要记住 |
+|----------|----------|----------|
+| 默认场景：异步排队、可多订阅者、要拦截器/重试 | `PublishAsync` | 与 `Publish` 相比会等待入队；处理在后台 |
+| 只把事件放进队列，不等待写入 | `Publish` | 仍走队列；拦截器/重试仍适用（处理阶段） |
+| 立刻执行并等待结果；逻辑上只有一个处理者 | `InvokeAsync` / `InvokeByTopicAsync` | **最多一个**匹配订阅者，否则抛 `InvalidOperationException`；**不触发拦截器、不重试** |
+| 用字符串主题发布强类型或弱类型载荷 | `PublishByTopicAsync` / `InvokeByTopicAsync` | 订阅侧 Topic 需与匹配规则一致（见 [Topic 匹配器](#topic-匹配器)） |
+| 在 UI 线程里更新界面 | `SubscribeOptions.ThreadOption = ThreadOption.UIThread` | 需在带 `SynchronizationContext` 的线程创建总线，或传入 UI 上下文 |
+| 把不同业务隔离到不同队列、提高并行度 | `SubscribeOptions.ChannelId = 1..PartitionCount-1` | 发布端**不必**指定通道；路由规则见 [订阅驱动通道路由](#订阅驱动通道路由) |
+
+**Topic 默认键：** 强类型发布/订阅若未配置 `SubscribeOptions.Topic`，通常使用 `typeof(TEvent).FullName` 作为主题（与内部 `IEventKeyProvider` 一致）。自定义 Topic 时，发布与订阅应使用同一字符串或兼容的匹配模式。
 
 ## 🚀 快速开始
 
@@ -88,6 +120,8 @@ public record PaymentReceivedEvent(int OrderId, decimal Amount, DateTime PaidAt)
 
 ### 3. 发布事件
 
+日常优先使用 `PublishAsync`；`Publish` 为同步入队。需要**直接调用唯一订阅者**时用 `InvokeAsync`（约束见 [使用路径怎么选](#使用路径怎么选) 与 [直接调用订阅者（InvokeAsync）](#直接调用订阅者invokeasync)）。
+
 ```csharp
 // 异步发布（推荐）
 await eventBus.PublishAsync(new OrderCreatedEvent(123, "张三", 99.99m));
@@ -95,18 +129,64 @@ await eventBus.PublishAsync(new OrderCreatedEvent(123, "张三", 99.99m));
 // 同步发布（入队不等待处理）
 eventBus.Publish(new OrderCreatedEvent(456, "李四", 199.99m));
 
-// 直接调用（不经过队列，同步等待处理完成）
-await eventBus.InvokeAsync(new OrderCreatedEvent(100, "DirectCall", 500m));
-
-// 通过 Topic 直接调用
-await eventBus.InvokeByTopicAsync("system/shutdown");
+// 连续发布多个事件（按需自行循环）
+var orders = new[]
+{
+    new OrderCreatedEvent(1, "Customer1", 100m),
+    new OrderCreatedEvent(2, "Customer2", 200m),
+    new OrderCreatedEvent(3, "Customer3", 300m)
+};
+foreach (var order in orders)
+{
+    await eventBus.PublishAsync(order);
+}
 ```
 
-### 4. 订阅事件
+### 4. 订阅事件（常用写法）
+
+```csharp
+var subscription = eventBus.Subscribe<OrderCreatedEvent>(async (order, ct) =>
+{
+    Console.WriteLine($"收到订单: {order.OrderId}, 客户: {order.CustomerName}");
+    await ProcessOrderAsync(order, ct);
+});
+
+subscription.Dispose(); // 取消订阅
+```
+
+强类型载荷不一定是领域模型，也可以是 `string` 等；配合**自定义 Topic** 与 **`ThreadOption.UIThread`**（在 UI 线程更新界面）时，可写成：
+
+```csharp
+// Topic 建议集中定义，避免魔法字符串
+internal static class WorkflowTopics
+{
+    public const string StatusMessage = "workflow/status";
+}
+
+void UpdateStatusMessage(string message)
+{
+    // 例如更新状态栏、进度文案（在 UI 线程执行）
+}
+
+using var statusSub = eventBus.Subscribe<string>(
+    UpdateStatusMessage,
+    new SubscribeOptions
+    {
+        Topic = WorkflowTopics.StatusMessage,
+        ThreadOption = ThreadOption.UIThread
+    });
+
+// 发布侧需使用相同 Topic，例如：
+// await eventBus.PublishAsync("处理中…", WorkflowTopics.StatusMessage);
+```
+
+`[Subscribe]` 特性、`SubscribeOptions`、弱类型 Topic 订阅、`Unsubscribe` 等与 [`IEventSubscriber`](src/LocalEventBus/Abstractions/IEventSubscriber.cs) 的完整说明见下一节。
+
+## 📘 订阅 API 详解
 
 订阅能力由 [`IEventSubscriber`](src/LocalEventBus/Abstractions/IEventSubscriber.cs) 定义（含 `SubscribeOptions`），`IEventBus` 继承该接口，因此通过 `IEventBus` 即可注册与移除订阅。
 
-#### `IEventSubscriber` 概览
+### `IEventSubscriber` 概览
 
 | 成员 | 说明 |
 |------|------|
@@ -120,22 +200,15 @@ await eventBus.InvokeByTopicAsync("system/shutdown");
 
 **Topic 默认值：** 强类型重载中，若 `SubscribeOptions.Topic` 为 `null`，则内部使用事件类型的全名 `typeof(TEvent).FullName` 作为订阅主题（与发布时未指定 Topic 的键一致）。
 
-**`SubscribeOptions` 要点：** `Topic`、`Timeout`、`ThreadOption`（默认 `BackgroundThread`）、`ChannelId`（`null` 表示未指定通道，走「未指定通道池」路由；`1..PartitionCount-1` 为显式通道）。详见下文 [SubscribeOptions](#subscribeoptions)。
+**`SubscribeOptions` 要点：** `Topic`、`Timeout`、`ThreadOption`（默认 `BackgroundThread`）、`ChannelId`（`null` 表示未指定通道，走「未指定通道池」路由；`1..PartitionCount-1` 为显式通道）。配置示例见 [SubscribeOptions](#subscribeoptions)。
 
 **`ThreadOption.UIThread`：** 需在存在 `SynchronizationContext` 的线程上创建总线，或向构造函数传入 UI 上下文；否则会在订阅校验阶段抛出异常。
 
-#### 委托方式（强类型）
+### 委托方式（强类型）
 
 ```csharp
-// 推荐
-var subscription = eventBus.Subscribe<OrderCreatedEvent>(ProcessOrderAsync,
-    new SubscribeOptions
-    {
-        Topic = AutoWorkflowEventTopics.StatusMessage,
-        ThreadOption = ThreadOption.UIThread
-    });
-
-eventBus.Subscribe<OrderCreatedEvent>(async (order, ct) =>
+// 异步处理（推荐）
+var subscription = eventBus.Subscribe<OrderCreatedEvent>(async (order, ct) =>
 {
     Console.WriteLine($"收到订单: {order.OrderId}, 客户: {order.CustomerName}");
     await ProcessOrderAsync(order, ct);
@@ -157,12 +230,11 @@ eventBus.Subscribe<OrderCreatedEvent>(order =>
     Console.WriteLine($"订单 {order.OrderId} 已创建");
 });
 
-// 取消订阅
 subscription.Dispose();
 vipSub.Dispose();
 ```
 
-#### 纯 Topic 订阅（弱类型）
+### 纯 Topic 订阅（弱类型）
 
 适用于只关心主题、载荷为任意对象或 `null` 的场景（例如与 `PublishByTopicAsync` 配合）。
 
@@ -179,11 +251,10 @@ var sub = eventBus.Subscribe(
 // 同步
 eventBus.Subscribe("system/ping", _ => Console.WriteLine("pong"));
 
-// 取消订阅
 sub.Dispose();
 ```
 
-#### 特性方式
+### 特性方式
 
 ```csharp
 public class OrderHandler
@@ -229,7 +300,7 @@ eventBus.Unsubscribe(handler);
 subscription.Dispose();
 ```
 
-## ⚙️ 配置选项
+## ⚙️ 配置与约定
 
 ### EventBusOptions
 
@@ -369,7 +440,10 @@ eventBus.AddInterceptor(new LoggingInterceptor());
 
 ### 订阅驱动通道路由
 
+> 速览与何时使用显式通道，见 [使用路径怎么选](#使用路径怎么选)。本节为路由细节与示例。
+
 LocalEventBus 采用“订阅驱动”的通道模型：
+
 - `0` 号通道固定为未指定通道
 - `1..PartitionCount-1` 为显式通道（订阅时指定）
 - 发布侧无需指定通道，框架根据匹配订阅者自动决定写入目标通道
@@ -397,6 +471,7 @@ await eventBus.PublishAsync(new OrderCreatedEvent(123, "Alice", 100m));
 ```
 
 **路由规则：**
+
 - ✅ 命中显式通道订阅者：按通道去重后分别入队（可跨通道并行）
 - ✅ 命中未指定订阅者：写入“未指定通道池”，按最小负载自动选择（并列随机）
 - ✅ 未指定通道池 = `{0} ∪ {当前未被显式订阅占用的通道}`
@@ -419,11 +494,13 @@ await eventBus.InvokeByTopicAsync("user/notification",
 ```
 
 **适用场景：**
+
 - 需要立即执行的操作（不希望异步延迟）
 - 需要等待目标订阅者完成
 - 测试场景下验证订阅者行为
 
 **注意事项：**
+
 - `InvokeAsync` / `InvokeByTopicAsync` 要求最多一个匹配订阅者
 - 当匹配到多个订阅者时会直接抛出 `InvalidOperationException`，且不会调用任何订阅者
 - ✅ **会应用过滤器**（可以过滤不需要处理的事件）
@@ -785,7 +862,6 @@ public class EventBusBenchmark
 └─────────────────────────────────┘
 ```
 
-
 ## 🔧 要求
 
 - .NET 8.0 或更高版本
@@ -858,7 +934,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 📮 联系
 
-如有问题或建议，请提交 [Issue](https://github.com/your-repo/LocalEventBus/issues)。
+如有问题或建议，请提交 [Issue](https://github.com/lejoycoder/LocalEventBus/issues)。
 
 ---
 
