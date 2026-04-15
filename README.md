@@ -95,18 +95,6 @@ await eventBus.PublishAsync(new OrderCreatedEvent(123, "张三", 99.99m));
 // 同步发布（入队不等待处理）
 eventBus.Publish(new OrderCreatedEvent(456, "李四", 199.99m));
 
-// 连续发布多个事件（按需自行循环）
-var orders = new[]
-{
-    new OrderCreatedEvent(1, "Customer1", 100m),
-    new OrderCreatedEvent(2, "Customer2", 200m),
-    new OrderCreatedEvent(3, "Customer3", 300m)
-};
-foreach (var order in orders)
-{
-    await eventBus.PublishAsync(order);
-}
-
 // 直接调用（不经过队列，同步等待处理完成）
 await eventBus.InvokeAsync(new OrderCreatedEvent(100, "DirectCall", 500m));
 
@@ -116,15 +104,52 @@ await eventBus.InvokeByTopicAsync("system/shutdown");
 
 ### 4. 订阅事件
 
-#### 委托方式
+订阅能力由 [`IEventSubscriber`](src/LocalEventBus/Abstractions/IEventSubscriber.cs) 定义（含 `SubscribeOptions`），`IEventBus` 继承该接口，因此通过 `IEventBus` 即可注册与移除订阅。
+
+#### `IEventSubscriber` 概览
+
+| 成员 | 说明 |
+|------|------|
+| `Subscribe<TEvent>(Func<TEvent, CancellationToken, ValueTask>, SubscribeOptions?)` | 强类型异步处理，`TEvent : notnull` |
+| `Subscribe<TEvent>(Action<TEvent>, SubscribeOptions?)` | 强类型同步处理 |
+| `Subscribe(object)` | 扫描实例上的 `[Subscribe]`，批量注册 |
+| `Subscribe(string, Func<object?, CancellationToken, ValueTask>, SubscribeOptions?)` | 仅按 Topic 订阅，载荷为 `object?` |
+| `Subscribe(string, Action<object?>, SubscribeOptions?)` | 同上，同步 |
+| `Unsubscribe(object)` | 移除注册表中 `Target` 与该对象引用相同的所有订阅项 |
+| 返回值 `IDisposable` | 调用 `Dispose()` 取消该次 `Subscribe` 调用所注册的一组订阅 |
+
+**Topic 默认值：** 强类型重载中，若 `SubscribeOptions.Topic` 为 `null`，则内部使用事件类型的全名 `typeof(TEvent).FullName` 作为订阅主题（与发布时未指定 Topic 的键一致）。
+
+**`SubscribeOptions` 要点：** `Topic`、`Timeout`、`ThreadOption`（默认 `BackgroundThread`）、`ChannelId`（`null` 表示未指定通道，走「未指定通道池」路由；`1..PartitionCount-1` 为显式通道）。详见下文 [SubscribeOptions](#subscribeoptions)。
+
+**`ThreadOption.UIThread`：** 需在存在 `SynchronizationContext` 的线程上创建总线，或向构造函数传入 UI 上下文；否则会在订阅校验阶段抛出异常。
+
+#### 委托方式（强类型）
 
 ```csharp
-// 异步处理
-var subscription = eventBus.Subscribe<OrderCreatedEvent>(async (order, ct) =>
+// 推荐
+var subscription = eventBus.Subscribe<OrderCreatedEvent>(ProcessOrderAsync,
+    new SubscribeOptions
+    {
+        Topic = AutoWorkflowEventTopics.StatusMessage,
+        ThreadOption = ThreadOption.UIThread
+    });
+
+eventBus.Subscribe<OrderCreatedEvent>(async (order, ct) =>
 {
     Console.WriteLine($"收到订单: {order.OrderId}, 客户: {order.CustomerName}");
     await ProcessOrderAsync(order, ct);
 });
+
+// 带 SubscribeOptions（Topic / 超时 / 线程 / 通道）
+var vipSub = eventBus.Subscribe<OrderCreatedEvent>(
+    async (order, ct) => { /* ... */ },
+    new SubscribeOptions
+    {
+        Topic = "orders/vip",
+        Timeout = TimeSpan.FromSeconds(5),
+        ChannelId = 1
+    });
 
 // 同步处理
 eventBus.Subscribe<OrderCreatedEvent>(order =>
@@ -134,6 +159,28 @@ eventBus.Subscribe<OrderCreatedEvent>(order =>
 
 // 取消订阅
 subscription.Dispose();
+vipSub.Dispose();
+```
+
+#### 纯 Topic 订阅（弱类型）
+
+适用于只关心主题、载荷为任意对象或 `null` 的场景（例如与 `PublishByTopicAsync` 配合）。
+
+```csharp
+// 异步
+var sub = eventBus.Subscribe(
+    "system/alert",
+    async (payload, ct) =>
+    {
+        Console.WriteLine(payload);
+        await Task.CompletedTask;
+    });
+
+// 同步
+eventBus.Subscribe("system/ping", _ => Console.WriteLine("pong"));
+
+// 取消订阅
+sub.Dispose();
 ```
 
 #### 特性方式
@@ -174,7 +221,11 @@ public class OrderHandler
 var handler = new OrderHandler();
 var subscription = eventBus.Subscribe(handler);
 
-// 取消所有订阅
+// 按订阅目标引用移除：会删除 Target 等于 handler 的全部订阅
+//（典型为 Subscribe(handler)；若同一实例上还注册了指向其实例方法的委托订阅，也会一并移除）
+eventBus.Unsubscribe(handler);
+
+// 或仅释放该次 Subscribe(handler) 返回的令牌所对应的一组订阅
 subscription.Dispose();
 ```
 
@@ -221,9 +272,12 @@ eventBus.Subscribe<OrderCreatedEvent>(handler, new SubscribeOptions
     // 显式订阅通道（可选，范围 1..PartitionCount-1）
     // null 表示未指定通道订阅
     ChannelId = 1,
-    
+
     // 处理超时（默认使用 EventBusOptions.DefaultTimeout）
-    Timeout = TimeSpan.FromSeconds(10)
+    Timeout = TimeSpan.FromSeconds(10),
+
+    // 执行线程：BackgroundThread（默认）或 UIThread（需 SynchronizationContext）
+    ThreadOption = ThreadOption.BackgroundThread
 });
 ```
 
@@ -565,10 +619,10 @@ services.AddLocalEventBus()
     .AddInterceptor<MonitoringInterceptor>();
 ```
 
-### 4. 优雅关闭
+### 4. 优雅关闭(如果需要确保所有事件在应用关闭前被处理完毕)
 
 ```csharp
-// 在应用关闭时，确保所有事件都被处理完毕
+// 在应用关闭时,如果需要确保所有事件都被处理完毕
 public async Task ShutdownAsync(IEventBus eventBus, CancellationToken ct)
 {
     // 1. 停止接收新事件（如果有入口控制）
